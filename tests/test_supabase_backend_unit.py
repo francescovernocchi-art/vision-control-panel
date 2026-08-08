@@ -1,0 +1,61 @@
+"""Unit test Supabase backend mapping — no network / no real Supabase."""
+
+from __future__ import annotations
+
+from app.remote.backends.supabase import SupabaseRemoteBackend
+from app.remote.config import RemoteConfig
+from app.remote.models import DeviceIdentity, is_remote_command_allowed
+
+
+def test_status_only_policy_allows_only_get_status():
+    assert is_remote_command_allowed("GET_STATUS", policy="status_only")
+    assert not is_remote_command_allowed("CHECK_ENISPACE_MAIL", policy="status_only")
+    assert not is_remote_command_allowed("PAUSE_MODULE", policy="status_only")
+
+
+def test_supabase_backend_requires_anon_and_token():
+    cfg = RemoteConfig(
+        mode="supabase",
+        supabase_url="https://example.supabase.co",
+        vision_agent_token="tok",
+        supabase_anon_key="",
+    )
+    be = SupabaseRemoteBackend(cfg)
+    assert be._configured is False
+
+
+def test_vision_agent_token_alias():
+    cfg = RemoteConfig(vision_agent_token="secret-token-value")
+    assert cfg.supabase_agent_key == "secret-token-value"
+    assert cfg.vision_agent_token == "secret-token-value"
+
+
+def test_row_to_command_mapping():
+    row = {
+        "command_id": "11111111-1111-1111-1111-111111111111",
+        "command_type": "GET_STATUS",
+        "target_device_id": "VIS-TARANTO-01",
+        "status": "PENDING",
+        "parameters": {},
+        "requested_at": "2026-08-08T10:00:00",
+    }
+    cmd = SupabaseRemoteBackend._row_to_command(row)
+    assert cmd.command_type == "GET_STATUS"
+    assert cmd.target_device_id == "VIS-TARANTO-01"
+    assert cmd.status == "PENDING"
+
+
+def test_identity_heartbeat_shape_has_platform_version():
+    ident = DeviceIdentity(
+        device_id="VIS-TARANTO-01",
+        device_name="PC VIS Taranto",
+        agent_version="0.1.0",
+        vision_version="2.0-vision",
+        hostname="host",
+        status="ONLINE",
+        platform_version="0.5.0-remote-readonly",
+        modules=[{"module_id": "enispace", "status": "ONLINE", "health": "ONLINE"}],
+    )
+    hb = ident.to_heartbeat()
+    assert hb["platform_version"]
+    assert "skills" not in hb

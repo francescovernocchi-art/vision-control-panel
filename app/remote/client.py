@@ -14,7 +14,7 @@ def create_backend(config: RemoteConfig) -> Any:
     mode = (config.mode or "mock").strip().lower()
     if mode == "supabase":
         remote_log.info(
-            "Backend supabase stub selezionato (schema non ancora collegato)"
+            "Backend supabase selezionato (RPC Agent + status_only)"
         )
         return SupabaseRemoteBackend(config)
     remote_log.info("Backend mock attivo")

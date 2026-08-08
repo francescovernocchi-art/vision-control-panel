@@ -51,13 +51,20 @@ class RemoteConfig:
     device_name: str = "PC VIS Taranto"
     backend_provider: str = "supabase"
     supabase_url: str = ""
-    supabase_agent_key: str = ""
+    supabase_anon_key: str = ""
+    # Token dedicato Agent (NON è una chiave Supabase nativa)
+    vision_agent_token: str = ""
     heartbeat_seconds: int = 15
     command_poll_seconds: int = 3
     agent_version: str = "0.1.0"
     vision_version: str = "2.0-vision"
     # status_only | full — solo comandi dal Remote Agent (non UI/JARVIS locale)
     remote_execution_policy: str = "status_only"
+
+    @property
+    def supabase_agent_key(self) -> str:
+        """Compat: alias storico → vision_agent_token."""
+        return self.vision_agent_token
 
     @classmethod
     def load(cls, env_path: Optional[Path] = None) -> "RemoteConfig":
@@ -75,6 +82,12 @@ class RemoteConfig:
         if policy not in ("status_only", "full"):
             policy = "status_only"
 
+        agent_token = (
+            os.environ.get("VISION_AGENT_TOKEN")
+            or os.environ.get("SUPABASE_AGENT_KEY")  # legacy alias
+            or ""
+        ).strip()
+
         return cls(
             enabled=_bool(os.environ.get("VISION_REMOTE_ENABLED"), False),
             mode=mode,
@@ -84,7 +97,12 @@ class RemoteConfig:
                 os.environ.get("VISION_BACKEND_PROVIDER") or "supabase"
             ).strip().lower(),
             supabase_url=(os.environ.get("SUPABASE_URL") or "").strip(),
-            supabase_agent_key=(os.environ.get("SUPABASE_AGENT_KEY") or "").strip(),
+            supabase_anon_key=(
+                os.environ.get("SUPABASE_ANON_KEY")
+                or os.environ.get("SUPABASE_ANON")
+                or ""
+            ).strip(),
+            vision_agent_token=agent_token,
             heartbeat_seconds=max(
                 5, _int(os.environ.get("VISION_HEARTBEAT_SECONDS"), 15)
             ),
@@ -104,7 +122,8 @@ class RemoteConfig:
             "device_name": self.device_name,
             "backend_provider": self.backend_provider,
             "supabase_url_set": bool(self.supabase_url),
-            "supabase_agent_key_set": bool(self.supabase_agent_key),
+            "supabase_anon_key_set": bool(self.supabase_anon_key),
+            "vision_agent_token_set": bool(self.vision_agent_token),
             "heartbeat_seconds": self.heartbeat_seconds,
             "command_poll_seconds": self.command_poll_seconds,
             "agent_version": self.agent_version,
