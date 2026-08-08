@@ -9,7 +9,9 @@ from app.platform.context import PlatformContext
 from app.platform.descriptors import (
     CommandDescriptor,
     EventDescriptor,
+    HealthReport,
     ModuleDescriptor,
+    ServiceDescriptor,
 )
 from app.platform.skill_descriptor import SkillDescriptor
 
@@ -18,6 +20,8 @@ __all__ = [
     "ModuleDescriptor",
     "CommandDescriptor",
     "EventDescriptor",
+    "HealthReport",
+    "ServiceDescriptor",
     "SkillDescriptor",
     "bootstrap_platform",
     "get_platform_context",

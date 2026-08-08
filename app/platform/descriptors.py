@@ -72,9 +72,11 @@ class EventDescriptor:
 
 @dataclass
 class HealthSnapshot:
+    """Storage interno HealthRegistry (compat)."""
+
     target_id: str
     status: str
-    target_type: str = "module"  # module | core | supervisor | service
+    target_type: str = "module"
     ok: bool = True
     message: str = ""
     checked_at: str = ""
@@ -88,5 +90,67 @@ class HealthSnapshot:
             "ok": self.ok,
             "message": self.message,
             "checked_at": self.checked_at,
+            "metadata": dict(self.metadata),
+        }
+
+    def to_report(self, *, source: str = "dual_write") -> "HealthReport":
+        return HealthReport(
+            component_id=self.target_id,
+            component_type=self.target_type,
+            status=self.status,
+            ok=self.ok,
+            message=self.message,
+            updated_at=self.checked_at,
+            source=str((self.metadata or {}).get("source") or source),
+            metadata=dict(self.metadata),
+        )
+
+
+@dataclass
+class HealthReport:
+    """Schema standard Health (export / snapshot)."""
+
+    component_id: str
+    component_type: str  # core | module | supervisor | service | agent
+    status: str
+    ok: bool = True
+    message: str = ""
+    updated_at: str = ""
+    source: str = "dual_write"
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "component_id": self.component_id,
+            "component_type": self.component_type,
+            "status": self.status,
+            "ok": self.ok,
+            "message": self.message,
+            "updated_at": self.updated_at,
+            "source": self.source,
+            "metadata": dict(self.metadata),
+        }
+
+
+@dataclass
+class ServiceDescriptor:
+    service_id: str
+    display_name: str = ""
+    version: str = "1.0"
+    lifetime: str = "singleton"  # singleton | transient | external
+    required: bool = False
+    health_managed: bool = False
+    available: bool = True
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "service_id": self.service_id,
+            "display_name": self.display_name or self.service_id,
+            "version": self.version,
+            "lifetime": self.lifetime,
+            "required": self.required,
+            "health_managed": self.health_managed,
+            "available": self.available,
             "metadata": dict(self.metadata),
         }

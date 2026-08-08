@@ -1,4 +1,4 @@
-"""PlatformConsistencyCheck — skill vs capability (non blocca runtime)."""
+"""PlatformConsistencyCheck — skill / health / service (non blocca runtime)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,16 @@ from typing import Any
 from utils.logger import get_logger
 
 logger = get_logger("platform.consistency")
+
+# Servizi attesi (soft): assenza → WARNING, non ERROR obbligatorio salvo required
+_EXPECTED_SERVICES = (
+    "logger",
+    "configuration",
+    "storage",
+    "event_bus",
+    "notification",
+    "jobs",
+)
 
 
 @dataclass
@@ -36,26 +46,27 @@ def run_consistency_check(ctx: Any) -> ConsistencyReport:
     capability = getattr(ctx, "capability", None)
     skills = getattr(ctx, "skills", None)
     health = getattr(ctx, "health", None)
+    services = getattr(ctx, "services", None)
     if capability is None or skills is None:
-        return ConsistencyReport("ERROR", [
-            ConsistencyIssue("ERROR", "MISSING_REGISTRY", "capability/skills assenti")
-        ])
+        return ConsistencyReport(
+            "ERROR",
+            [ConsistencyIssue("ERROR", "MISSING_REGISTRY", "capability/skills assenti")],
+        )
 
     modules = {m.id: m for m in capability.list_modules()}
     registered_commands = {c.id for c in capability.list_commands()}
     registered_events = {e.event for e in capability.list_events()}
 
+    # --- skill → module ---
     for skill in skills.list_skills():
-        if skill.module_id not in modules and skill.module_id not in ("core",):
-            # core may be registered as module id core
-            if skill.module_id != "core" or "core" not in modules:
-                issues.append(
-                    ConsistencyIssue(
-                        "WARNING",
-                        "MODULE_MISSING",
-                        f"skill {skill.id}: module_id={skill.module_id} non in CapabilityRegistry",
-                    )
+        if skill.module_id not in modules:
+            issues.append(
+                ConsistencyIssue(
+                    "WARNING",
+                    "MODULE_MISSING",
+                    f"skill {skill.id}: module_id={skill.module_id} non in CapabilityRegistry",
                 )
+            )
         mod = modules.get(skill.module_id)
         if mod:
             for cmd in skill.commands:
@@ -84,21 +95,23 @@ def run_consistency_check(ctx: Any) -> ConsistencyReport:
                             f"skill {skill.id}: event {ev} non in capability",
                         )
                     )
+
+        # --- module → health ---
         if health is not None and skill.module_id:
-            if health.get(skill.module_id) is None and skill.module_id not in ("core",):
-                # core/supervisor have separate health ids
-                if skill.module_id not in ("supervisor",):
-                    issues.append(
-                        ConsistencyIssue(
-                            "WARNING",
-                            "HEALTH_MISSING",
-                            f"skill {skill.id}: nessun health per {skill.module_id}",
-                        )
+            if health.get(skill.module_id) is None:
+                issues.append(
+                    ConsistencyIssue(
+                        "WARNING",
+                        "HEALTH_MISSING",
+                        f"skill {skill.id}: nessun health per {skill.module_id}",
                     )
+                )
+
+        # --- module → capability (già sopra) + service deps ---
         for dep in skill.dependencies:
             if dep.startswith("service:"):
                 svc = dep.split(":", 1)[1]
-                if hasattr(ctx, "services") and not ctx.services.has(svc):
+                if services is not None and not services.has(svc):
                     issues.append(
                         ConsistencyIssue(
                             "WARNING",
@@ -106,6 +119,96 @@ def run_consistency_check(ctx: Any) -> ConsistencyReport:
                             f"skill {skill.id}: dependency {dep} non registrata",
                         )
                     )
+
+    # --- module → health / capability (tutti i moduli catalogo) ---
+    if health is not None:
+        for mid, mod in modules.items():
+            if mid in ("supervisor",):
+                continue
+            if health.get(mid) is None:
+                issues.append(
+                    ConsistencyIssue(
+                        "WARNING",
+                        "MODULE_HEALTH_GAP",
+                        f"module {mid}: presente in capability ma senza health",
+                    )
+                )
+
+    # --- servizi richiesti / attesi ---
+    if services is not None:
+        for sid in _EXPECTED_SERVICES:
+            desc = services.get_descriptor(sid) if hasattr(services, "get_descriptor") else None
+            has = services.has(sid)
+            if not has:
+                level = "WARNING"
+                if desc is not None and getattr(desc, "required", False):
+                    level = "ERROR"
+                issues.append(
+                    ConsistencyIssue(
+                        level,
+                        "SERVICE_UNAVAILABLE",
+                        f"service {sid}: non registrato (descriptor available={getattr(desc, 'available', False)})",
+                    )
+                )
+            elif desc is not None and not getattr(desc, "available", True):
+                issues.append(
+                    ConsistencyIssue(
+                        "WARNING",
+                        "SERVICE_MARKED_UNAVAILABLE",
+                        f"service {sid}: descriptor available=False",
+                    )
+                )
+
+        # event_bus disponibile
+        if not services.has("event_bus"):
+            issues.append(
+                ConsistencyIssue(
+                    "WARNING",
+                    "EVENT_BUS_MISSING",
+                    "event_bus non disponibile nel ServiceRegistry",
+                )
+            )
+
+        # notification stato
+        n_desc = services.get_descriptor("notification") if hasattr(services, "get_descriptor") else None
+        if services.has("notification"):
+            n_health = health.get("service:notification") if health is not None else None
+            if n_health is not None and n_health.status == "DEGRADED":
+                issues.append(
+                    ConsistencyIssue(
+                        "WARNING",
+                        "NOTIFICATION_DEGRADED",
+                        "notification service in DEGRADED (stub / senza provider esterni)",
+                    )
+                )
+        elif n_desc is not None:
+            issues.append(
+                ConsistencyIssue(
+                    "WARNING",
+                    "NOTIFICATION_UNAVAILABLE",
+                    "notification service non istanziato",
+                )
+            )
+
+    # --- versioni compatibili (soft) ---
+    platform_version = str(getattr(ctx, "platform_version", "") or "")
+    vision_version = str(getattr(ctx, "version", "") or "")
+    if not platform_version.startswith("0."):
+        issues.append(
+            ConsistencyIssue(
+                "WARNING",
+                "PLATFORM_VERSION_UNEXPECTED",
+                f"platform_version={platform_version} fuori schema 0.x safe-migration",
+            )
+        )
+    if vision_version and "vision" not in vision_version.lower():
+        issues.append(
+            ConsistencyIssue(
+                "WARNING",
+                "VISION_VERSION_UNEXPECTED",
+                f"vision_version={vision_version}",
+            )
+        )
 
     if any(i.level == "ERROR" for i in issues):
         level = "ERROR"

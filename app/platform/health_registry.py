@@ -1,4 +1,4 @@
-"""HealthRegistry — stato salute componenti piattaforma (+ history in-memory)."""
+"""HealthRegistry — dual-write view + overall health + history."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import threading
 from datetime import datetime
 from typing import Optional
 
-from app.platform.descriptors import HealthSnapshot
+from app.platform.descriptors import HealthReport, HealthSnapshot
 from utils.logger import get_logger
 
 logger = get_logger("platform.health")
@@ -22,6 +22,9 @@ VALID_STATUS = frozenset(
         "STOPPING",
     }
 )
+
+# Componenti "required" per overall health (opzionali non forzano ERROR se OFFLINE)
+REQUIRED_COMPONENTS = frozenset({"core", "enispace"})
 
 
 class HealthRegistry:
@@ -46,10 +49,7 @@ class HealthRegistry:
             st = "ERROR"
             message = message or f"status non valido: {status}"
         if ok is None:
-            if st in ("ERROR", "OFFLINE", "DISABLED"):
-                ok = False
-            else:
-                ok = True
+            ok = st not in ("ERROR", "OFFLINE", "DISABLED")
         snap = HealthSnapshot(
             target_id=target_id,
             target_type=target_type,
@@ -94,32 +94,88 @@ class HealthRegistry:
         with self._lock:
             return list(self._history[-max(1, limit) :])
 
+    def reports(self) -> list[HealthReport]:
+        return [i.to_report() for i in self.list()]
+
+    def compute_overall_status(self) -> str:
+        """
+        Regole conservative (documentate):
+        1. Se ``core`` è ERROR → ERROR
+        2. Se ``core`` è OFFLINE → ERROR (piattaforma non operativa)
+        3. Se un componente REQUIRED è ERROR → ERROR
+        4. Se un REQUIRED è OFFLINE/DISABLED → ERROR
+        5. Se qualsiasi componente è DEGRADED / STARTING / STOPPING → DEGRADED
+        6. Se tutti ONLINE → ONLINE
+        7. Altrimenti OFFLINE
+
+        Moduli opzionali OFFLINE (es. coin_transport non avviato) non forzano ERROR
+        se non sono in REQUIRED_COMPONENTS; se sono DEGRADED (IN_DEVELOPMENT) → DEGRADED.
+        """
+        items = {i.target_id: i for i in self.list()}
+        if not items:
+            return "OFFLINE"
+
+        core = items.get("core")
+        if core is not None:
+            if core.status == "ERROR":
+                return "ERROR"
+            if core.status == "OFFLINE":
+                return "ERROR"
+
+        for req in REQUIRED_COMPONENTS:
+            comp = items.get(req)
+            if comp is None:
+                continue
+            if comp.status in ("ERROR", "OFFLINE", "DISABLED"):
+                return "ERROR"
+
+        for comp in items.values():
+            if comp.status == "ERROR" and comp.target_id in REQUIRED_COMPONENTS:
+                return "ERROR"
+
+        for comp in items.values():
+            if comp.status in ("DEGRADED", "STARTING", "STOPPING"):
+                return "DEGRADED"
+
+        if all(c.status == "ONLINE" for c in items.values()):
+            return "ONLINE"
+
+        # mix di ONLINE + opzionali DISABLED/OFFLINE
+        if any(c.status == "ONLINE" for c in items.values()):
+            if any(c.status in ("OFFLINE", "DISABLED") for c in items.values()):
+                return "DEGRADED"
+            return "ONLINE"
+        return "OFFLINE"
+
+    def get_health_snapshot(self) -> dict:
+        reports = self.reports()
+        statuses = [r.status for r in reports]
+        last_updated = ""
+        if reports:
+            last_updated = max((r.updated_at for r in reports if r.updated_at), default="")
+        return {
+            "overall_status": self.compute_overall_status(),
+            "components": [r.to_dict() for r in reports],
+            "online_count": sum(1 for s in statuses if s == "ONLINE"),
+            "degraded_count": sum(1 for s in statuses if s == "DEGRADED"),
+            "error_count": sum(1 for s in statuses if s == "ERROR"),
+            "offline_count": sum(1 for s in statuses if s in ("OFFLINE", "DISABLED")),
+            "last_updated": last_updated,
+        }
+
     def snapshot(self) -> list[dict]:
-        """Snapshot globale componenti (dual-write view)."""
-        out = []
-        for item in self.list():
-            d = item.to_dict()
-            out.append(
-                {
-                    "component_id": d["target_id"],
-                    "status": d["status"],
-                    "ok": d["ok"],
-                    "message": d["message"],
-                    "updated_at": d["checked_at"],
-                    "target_type": d["target_type"],
-                    "metadata": d["metadata"],
-                }
-            )
-        return out
+        """Compat: lista componenti (HealthReport dict)."""
+        return [r.to_dict() for r in self.reports()]
 
     def summary(self) -> dict:
-        items = self.list()
+        hs = self.get_health_snapshot()
         return {
-            "count": len(items),
+            "count": len(hs["components"]),
+            "overall_status": hs["overall_status"],
             "by_status": {
-                s: sum(1 for i in items if i.status == s) for s in sorted(VALID_STATUS)
+                s: sum(1 for i in self.list() if i.status == s) for s in sorted(VALID_STATUS)
             },
-            "targets": [i.to_dict() for i in items],
-            "snapshot": self.snapshot(),
+            "targets": [i.to_dict() for i in self.list()],
+            "snapshot": hs,
             "history_size": len(self._history),
         }

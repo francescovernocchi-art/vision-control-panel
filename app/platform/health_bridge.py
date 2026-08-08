@@ -1,40 +1,17 @@
-"""ModuleHealthBridge — dual-write stati modulo → HealthRegistry.
-
-Source of truth: ModuleManager / moduli esistenti.
-HealthRegistry riceve solo copia normalizzata.
-"""
+"""ModuleHealthBridge — dual-write stati modulo → HealthRegistry."""
 
 from __future__ import annotations
 
 from typing import Any, Optional
 
 from app.platform.health_registry import HealthRegistry
+from app.platform.status_normalizer import normalize_health_status
 from utils.logger import get_logger
 
+# re-export per compat test / import storici
+__all__ = ["ModuleHealthBridge", "normalize_health_status"]
+
 logger = get_logger("platform.health_bridge")
-
-# Status runtime → status health catalog
-_STATUS_MAP = {
-    "ONLINE": "ONLINE",
-    "OFFLINE": "OFFLINE",
-    "DEGRADED": "DEGRADED",
-    "ERROR": "ERROR",
-    "DISABLED": "DISABLED",
-    "STARTING": "STARTING",
-    "STOPPING": "STOPPING",
-    "IN_DEVELOPMENT": "DEGRADED",
-}
-
-
-def normalize_health_status(status: str) -> tuple[str, dict]:
-    raw = str(status or "OFFLINE").strip().upper()
-    mapped = _STATUS_MAP.get(raw, "ERROR")
-    meta: dict[str, Any] = {}
-    if raw == "IN_DEVELOPMENT":
-        meta["module_status"] = "IN_DEVELOPMENT"
-    elif raw not in _STATUS_MAP:
-        meta["raw_status"] = raw
-    return mapped, meta
 
 
 class ModuleHealthBridge:
@@ -44,7 +21,6 @@ class ModuleHealthBridge:
         self._manager: Any = None
 
     def attach(self, module_manager: Any) -> None:
-        """Collega un unico listener a ModuleManager.set_status."""
         self._manager = module_manager
         if self._attached:
             return
@@ -55,11 +31,10 @@ class ModuleHealthBridge:
             logger.info("ModuleHealthBridge attached to ModuleManager")
         else:
             logger.warning(
-                "ModuleManager senza add_status_listener — solo sync esplicito disponibile"
+                "ModuleManager senza add_status_listener — solo sync esplicito"
             )
 
     def attach_event_bus(self, event_bus: Any) -> None:
-        """Dual-write anche da eventi MODULE_ONLINE / MODULE_OFFLINE."""
         if event_bus is None or not hasattr(event_bus, "subscribe"):
             return
 
@@ -106,7 +81,6 @@ class ModuleHealthBridge:
         )
 
     def sync_from_manager(self, module_manager: Any = None) -> int:
-        """Copia tutti gli stati correnti (non source of truth invertita)."""
         mgr = module_manager or self._manager
         if mgr is None or not hasattr(mgr, "list_modules"):
             return 0
@@ -134,22 +108,24 @@ class ModuleHealthBridge:
                 "ONLINE" if online else "OFFLINE",
                 target_type="core",
                 message="dual-write core",
-                metadata={"source": "dual_write"},
+                metadata={"source": "dual_write", "lifecycle": "ONLINE" if online else "OFFLINE"},
             )
         if jarvis is not None:
             active = bool(getattr(jarvis, "is_active", False))
+            st = "ONLINE" if active or (core and getattr(core, "is_online", False)) else "OFFLINE"
             self.health.update(
                 "supervisor",
-                "ONLINE" if active or (core and getattr(core, "is_online", False)) else "OFFLINE",
+                st,
                 target_type="supervisor",
                 message="dual-write supervisor",
-                metadata={"source": "dual_write", "jarvis_active": active},
+                metadata={"source": "dual_write", "jarvis_active": active, "lifecycle": st},
             )
         elif core is not None:
+            st = "ONLINE" if getattr(core, "is_online", False) else "OFFLINE"
             self.health.update(
                 "supervisor",
-                "ONLINE" if getattr(core, "is_online", False) else "OFFLINE",
+                st,
                 target_type="supervisor",
                 message="dual-write supervisor (no jarvis)",
-                metadata={"source": "dual_write"},
+                metadata={"source": "dual_write", "lifecycle": st},
             )

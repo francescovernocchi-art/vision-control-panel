@@ -15,15 +15,20 @@ from app.platform.descriptors import (
     CommandDescriptor,
     EventDescriptor,
     ModuleDescriptor,
+    ServiceDescriptor,
 )
+from app.platform.diagnostics import run_platform_diagnostics
 from app.platform.health_bridge import ModuleHealthBridge
 from app.platform.health_registry import HealthRegistry
 from app.platform.service_registry import ServiceRegistry
 from app.platform.skill_registry import SkillRegistry
+from app.platform.status_normalizer import normalize_health_status
 from utils.logger import get_logger
 from utils.paths import PRODUCT_NAME, config_dir, data_dir, logs_dir, project_root
 
 logger = get_logger("platform.bootstrap")
+
+PLATFORM_VERSION = "0.3.0-services-health"
 
 _CONTEXT: Optional[PlatformContext] = None
 
@@ -125,7 +130,7 @@ def bootstrap_platform(
         services=services,
         skills=skills,
         version="2.0-vision",
-        platform_version="0.2.0-skills-health",
+        platform_version=PLATFORM_VERSION,
         config={
             "product": PRODUCT_NAME,
             "config_dir": str(config_dir()),
@@ -137,6 +142,7 @@ def bootstrap_platform(
 
     # --- services: solo riferimenti esistenti, nessuna nuova istanza ---
     _register_services(ctx, core)
+    _register_service_health(ctx)
 
     # --- Core ---
     _register_core(ctx, core)
@@ -161,6 +167,9 @@ def bootstrap_platform(
 
     # --- Skill manifests statici (percorsi espliciti) ---
     _load_static_skills(ctx)
+
+    # --- Soft-DI consumer non critico (diagnostica) + fallback ---
+    ctx.last_diagnostics = run_platform_diagnostics(ctx)
 
     # --- Consistency (non blocca) ---
     ctx.last_consistency = run_consistency_check(ctx)
@@ -212,28 +221,127 @@ def _load_static_skills(ctx: PlatformContext) -> None:
 
 
 def _register_services(ctx: PlatformContext, core: Any) -> None:
+    """Registra solo istanze esistenti + descriptor; no nuove implementazioni."""
+
+    def _reg(
+        service_id: str,
+        instance: Any,
+        *,
+        lifetime: str = "external",
+        required: bool = False,
+        health_managed: bool = True,
+        display_name: str = "",
+        metadata: Optional[dict] = None,
+    ) -> None:
+        ctx.services.register(
+            service_id,
+            instance,
+            descriptor=ServiceDescriptor(
+                service_id=service_id,
+                display_name=display_name or service_id,
+                version="1.0",
+                lifetime=lifetime,
+                required=required,
+                health_managed=health_managed,
+                available=True,
+                metadata=dict(metadata or {}),
+            ),
+        )
+
+    def _unavail(service_id: str, reason: str, *, required: bool = False) -> None:
+        ctx.services.register_unavailable(
+            service_id,
+            descriptor=ServiceDescriptor(
+                service_id=service_id,
+                display_name=service_id,
+                lifetime="external",
+                required=required,
+                health_managed=True,
+                available=False,
+                metadata={"reason": reason},
+            ),
+            reason=reason,
+        )
+
     # Logger facade (modulo logging già usato) — non nuova infrastruttura
-    ctx.services.register("logger", get_logger("platform"))
-    ctx.services.register(
+    _reg("logger", get_logger("platform"), lifetime="singleton", required=True)
+    _reg(
         "configuration",
         {
             "config_dir": str(config_dir()),
             "data_dir": str(data_dir()),
             "logs_dir": str(logs_dir()),
         },
+        lifetime="singleton",
+        metadata={"kind": "paths"},
     )
-    ctx.services.register(
+    _reg(
         "storage",
         {"data_dir": str(data_dir()), "logs_dir": str(logs_dir())},
+        lifetime="singleton",
+        metadata={"kind": "paths"},
     )
 
-    if core is not None:
-        if getattr(core, "event_bus", None) is not None:
-            ctx.services.register("event_bus", core.event_bus)
-        if getattr(core, "notifications", None) is not None:
-            ctx.services.register("notification", core.notifications)
-        if getattr(core, "jobs", None) is not None:
-            ctx.services.register("jobs", core.jobs)
+    if core is not None and getattr(core, "event_bus", None) is not None:
+        _reg("event_bus", core.event_bus, required=True, lifetime="external")
+    else:
+        _unavail("event_bus", "core.event_bus assente", required=True)
+
+    if core is not None and getattr(core, "notifications", None) is not None:
+        _reg(
+            "notification",
+            core.notifications,
+            lifetime="external",
+            metadata={"stub": True, "providers": "none"},
+        )
+    else:
+        _unavail("notification", "core.notifications assente")
+
+    if core is not None and getattr(core, "jobs", None) is not None:
+        _reg("jobs", core.jobs, lifetime="external")
+    else:
+        _unavail("jobs", "core.jobs assente")
+
+
+def _register_service_health(ctx: PlatformContext) -> None:
+    """Health leggero per servizi — senza monitor complessi."""
+    for desc in ctx.services.list_descriptors():
+        if not desc.health_managed:
+            continue
+        hid = f"service:{desc.service_id}"
+        if not desc.available or not ctx.services.has(desc.service_id):
+            ctx.health.update(
+                hid,
+                "OFFLINE",
+                target_type="service",
+                ok=False,
+                message=f"service {desc.service_id} unavailable",
+                metadata={
+                    "source": "service_registry",
+                    "service_id": desc.service_id,
+                    "reason": (desc.metadata or {}).get("reason", "unavailable"),
+                },
+            )
+            continue
+        # notification senza provider esterni → DEGRADED (stub)
+        if desc.service_id == "notification" and (desc.metadata or {}).get("stub"):
+            status = "DEGRADED"
+            message = "notification stub (no external providers)"
+        else:
+            status = "ONLINE"
+            message = f"service {desc.service_id} registered"
+        ctx.health.update(
+            hid,
+            status,
+            target_type="service",
+            message=message,
+            metadata={
+                "source": "service_registry",
+                "service_id": desc.service_id,
+                "lifetime": desc.lifetime,
+                **dict(desc.metadata or {}),
+            },
+        )
 
 
 def _register_core(ctx: PlatformContext, core: Any) -> None:
@@ -373,10 +481,7 @@ def _register_coin_transport_catalog(ctx: PlatformContext, core: Any) -> None:
     if info is None:
         return
     status = str(getattr(info, "status", "IN_DEVELOPMENT") or "IN_DEVELOPMENT")
-    # Normalizza IN_DEVELOPMENT → DEGRADED per health enum? Better map to ONLINE-ish
-    health_status = "ONLINE" if status in ("ONLINE", "IN_DEVELOPMENT") else status
-    if status == "IN_DEVELOPMENT":
-        health_status = "DEGRADED"
+    health_status, meta = normalize_health_status(status)
     ctx.capability.register_module(
         ModuleDescriptor(
             id="coin_transport",
@@ -413,10 +518,12 @@ def _register_coin_transport_catalog(ctx: PlatformContext, core: Any) -> None:
                 implemented=impl,
             )
         )
+    meta = dict(meta)
+    meta["source"] = "dual_write"
     ctx.health.update(
         "coin_transport",
         health_status,
         target_type="module",
         message="coin_transport dual-registered (catalog)",
-        metadata={"module_status": status},
+        metadata=meta,
     )

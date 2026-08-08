@@ -22,6 +22,25 @@ class ModuleInfo:
     capabilities: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def __setattr__(self, name: str, value: Any) -> None:
+        """
+        Observer minimo: intercetta assegnazioni dirette a ``status``
+        (es. modulo._info.status = ONLINE) senza richiedere set_status().
+        ModuleManager resta source of truth; listener fa dual-write Health.
+        """
+        if name == "status":
+            had = "status" in self.__dict__
+            old = self.__dict__.get("status")
+            object.__setattr__(self, name, value)
+            listener = self.__dict__.get("_status_listener")
+            if had and listener is not None and str(old) != str(value):
+                try:
+                    listener(self.__dict__.get("id", ""), str(value))
+                except Exception:
+                    pass
+            return
+        object.__setattr__(self, name, value)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
@@ -66,14 +85,31 @@ class ModuleManager:
         with self._lock:
             self._modules[info.id] = module
             self._infos[info.id] = info
+            # Abilita watch su assegnazioni dirette info.status = ...
+            object.__setattr__(
+                info,
+                "_status_listener",
+                self._make_status_listener(info.id),
+            )
         logger.info("Modulo registrato: %s (%s) v%s", info.name, info.id, info.version)
         self._notify_status(info.id, info.status)
         return info
 
+    def _make_status_listener(self, module_id: str):
+        def _cb(_mid: str, status: str) -> None:
+            self._notify_status(module_id, status)
+
+        return _cb
+
     def unregister(self, module_id: str) -> None:
         with self._lock:
+            info = self._infos.pop(module_id, None)
             self._modules.pop(module_id, None)
-            self._infos.pop(module_id, None)
+            if info is not None:
+                try:
+                    object.__setattr__(info, "_status_listener", None)
+                except Exception:
+                    pass
 
     def get(self, module_id: str) -> Optional[VisionModule]:
         with self._lock:
@@ -89,12 +125,14 @@ class ModuleManager:
             return [ModuleInfo(**i.to_dict()) for i in self._infos.values()]
 
     def set_status(self, module_id: str, status: str | ModuleStatus) -> None:
+        """Aggiorna status SoT; il watch su ModuleInfo notifica i listener."""
         with self._lock:
             info = self._infos.get(module_id)
             if not info:
                 return
+            # Assegnazione → __setattr__ → listener → dual-write
+            # Evita doppia notifica: listener già chiama _notify_status
             info.status = str(status)
-        self._notify_status(module_id, str(status))
 
     def _notify_status(self, module_id: str, status: str) -> None:
         for cb in list(self._status_listeners):
