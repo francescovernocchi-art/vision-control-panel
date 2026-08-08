@@ -30,6 +30,17 @@ export function useRoles() {
     queryKey: ["my_roles", user?.id],
     enabled: !!user,
     queryFn: async () => {
+      // Canonical Agent schema: profiles.role (column may be absent on legacy DB)
+      const profile = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("user_id" as never, user!.id)
+        .maybeSingle();
+      const profileRole = (profile.data as { role?: AppRole } | null)?.role;
+      if (!profile.error && profileRole) {
+        return [profileRole];
+      }
+      // Legacy Lovable: user_roles table
       const { data, error } = await supabase
         .from("user_roles")
         .select("role")
@@ -57,6 +68,13 @@ export function useProfile() {
     queryKey: ["my_profile", user?.id],
     enabled: !!user,
     queryFn: async () => {
+      // Canonical: profiles.user_id; legacy Lovable: profiles.id
+      const byUserId = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("user_id" as never, user!.id)
+        .maybeSingle();
+      if (!byUserId.error && byUserId.data) return byUserId.data;
       const { data, error } = await supabase
         .from("profiles")
         .select("*")

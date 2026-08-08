@@ -22,8 +22,63 @@ function useTable<T = Record<string, unknown>>(
   });
 }
 
-export const useDevices = () =>
-  useTable<any>("devices", "devices", (q) => q.order("code"));
+/** Normalize Agent (device_id) and legacy Lovable (id/code) device rows. */
+export function normalizeDeviceRow(raw: Record<string, unknown>): {
+  device_id: string;
+  id: string;
+  code: string;
+  name: string;
+  device_name: string;
+  location: string | null;
+  status: string;
+  last_seen_at: string | null;
+  agent_version: string | null;
+  vision_version: string | null;
+  platform_version: string | null;
+  heartbeat_threshold_seconds: number | null;
+  metadata: Record<string, unknown>;
+  is_demo: boolean;
+  hostname?: string | null;
+} {
+  const deviceId = String(raw["device_id"] ?? raw["code"] ?? raw["id"] ?? "");
+  const name = String(raw["device_name"] ?? raw["name"] ?? deviceId);
+  const metadata = (raw["metadata"] as Record<string, unknown> | undefined) ?? {};
+  const metaThreshold = metadata["offline_threshold_seconds"];
+  const hb = raw["heartbeat_threshold_seconds"];
+  const threshold =
+    typeof hb === "number"
+      ? hb
+      : typeof metaThreshold === "number"
+        ? metaThreshold
+        : 60;
+  return {
+    device_id: deviceId,
+    id: deviceId,
+    code: deviceId,
+    name,
+    device_name: name,
+    location: (raw["location"] as string | null) ?? null,
+    status: String(raw["status"] ?? "OFFLINE"),
+    last_seen_at: (raw["last_seen_at"] as string | null) ?? null,
+    agent_version: (raw["agent_version"] as string | null) ?? null,
+    vision_version: (raw["vision_version"] as string | null) ?? null,
+    platform_version: (raw["platform_version"] as string | null) ?? null,
+    heartbeat_threshold_seconds: threshold,
+    metadata,
+    is_demo: Boolean(raw["is_demo"]),
+    hostname: (raw["hostname"] as string | null) ?? null,
+  };
+}
+
+export const useDevices = () => {
+  const q = useTable<Record<string, unknown>>("devices", "devices", (query) =>
+    query.order("last_seen_at", { ascending: false }),
+  );
+  return {
+    ...q,
+    data: (q.data ?? []).map((row) => normalizeDeviceRow(row)),
+  };
+};
 export const useModules = () =>
   useTable<any>("modules", "modules", (q) => q.order("name"));
 export const useJobs = () =>

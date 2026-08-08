@@ -120,16 +120,16 @@ function Dashboard() {
             />
           ) : null}
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {devices.map((d: any) => {
+            {devices.map((d) => {
               const onlineStatus = derivedAgentStatus(d, null);
-              const cmd = pickLatestGetStatusCommand(commands, d.id);
+              const cmd = pickLatestGetStatusCommand(commands, d.device_id);
               const result =
                 cmd?.status === "COMPLETED" && cmd.result && typeof cmd.result === "object"
                   ? cmd.result
                   : null;
               return (
                 <DeviceCard
-                  key={d.id}
+                  key={d.device_id}
                   device={d}
                   onlineStatus={onlineStatus}
                   result={result}

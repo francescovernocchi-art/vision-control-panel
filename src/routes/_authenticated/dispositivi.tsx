@@ -78,7 +78,7 @@ function DispositiviPage() {
                 : undefined;
 
             return (
-              <div key={d.id} className="space-y-2">
+              <div key={d.device_id} className="space-y-2">
                 <DeviceCard
                   device={d}
                   onlineStatus={onlineStatus}
@@ -91,12 +91,12 @@ function DispositiviPage() {
                     disabledReason={disabledReason}
                     onConfirm={async () => {
                       try {
-                        const cmd = await createGetStatusCommand(d.code);
+                        const cmd = await createGetStatusCommand(d.device_id);
                         const wait = await waitForGetStatusResult(cmd.id);
                         void queryClient.invalidateQueries({ queryKey: ["commands"] });
                         void queryClient.invalidateQueries({ queryKey: ["devices"] });
                         if (!wait.ok) toast.error(wait.message);
-                        else toast.success("Stato aggiornato", { description: d.code });
+                        else toast.success("Stato aggiornato", { description: d.device_id });
                       } catch (e) {
                         toast.error("COMANDO FALLITO", {
                           description: (e as Error).message,
@@ -106,7 +106,7 @@ function DispositiviPage() {
                   />
                   <Link
                     to="/dispositivi/$code"
-                    params={{ code: d.code }}
+                    params={{ code: d.device_id }}
                     className="inline-flex h-9 items-center rounded-md border border-border px-3 text-xs text-muted-foreground hover:bg-muted/40"
                   >
                     Apri dettaglio

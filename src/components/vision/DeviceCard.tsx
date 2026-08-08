@@ -7,9 +7,13 @@ import { displayValue, jobSummaryLabel, statusLabel } from "@/lib/vision-status"
 import type { GetStatusResult } from "@/lib/vision-remote-status";
 
 export type DeviceCardModel = {
-  id: string;
-  code: string;
+  /** Canonical Agent device_id (text code). */
+  device_id: string;
+  /** @deprecated alias of device_id for older call sites */
+  id?: string;
+  code?: string;
   name?: string | null;
+  device_name?: string | null;
   location?: string | null;
   last_seen_at?: string | null;
   agent_version?: string | null;
@@ -27,6 +31,8 @@ export function DeviceCard({
   onlineStatus: string;
   result?: GetStatusResult | null;
 }) {
+  const code = device.device_id || device.code || device.id || "";
+  const displayName = device.device_name || device.name || "Dispositivo VISION";
   const health = result?.overall_health ?? (onlineStatus === "OFFLINE" ? "OFFLINE" : "—");
   const eni = result?.enispace_runtime;
   const eniStatus = eni?.available === false ? "UNAVAILABLE" : (eni?.status ?? "—");
@@ -36,17 +42,17 @@ export function DeviceCard({
   return (
     <Link
       to="/dispositivi/$code"
-      params={{ code: device.code }}
+      params={{ code }}
       className="group block rounded-xl border border-border/80 bg-card/50 p-4 transition-colors hover:border-accent/50 hover:bg-card/80"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="flex items-center gap-2 font-mono text-sm font-semibold tracking-wide">
             <StatusDot status={onlineStatus} />
-            <span className="truncate">{device.code}</span>
+            <span className="truncate">{code}</span>
           </p>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {device.name || "Dispositivo VISION"}
+            {displayName}
             {device.location ? ` · ${device.location}` : ""}
           </p>
         </div>

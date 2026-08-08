@@ -42,7 +42,13 @@ export function useGetStatus(deviceId: string = DEFAULT_DEVICE_ID) {
   const queryClient = useQueryClient();
   const { data: devices = [] } = useDevices();
   const device =
-    devices.find((d: { code?: string }) => d.code === deviceId) ?? devices[0] ?? null;
+    devices.find(
+      (d: { device_id?: string; code?: string }) =>
+        d.device_id === deviceId || d.code === deviceId,
+    ) ??
+    devices[0] ??
+    null;
+  const deviceKey = device?.device_id || device?.code || device?.id || "";
 
   const [result, setResult] = useState<GetStatusResult | null>(() => loadCached());
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
@@ -56,16 +62,16 @@ export function useGetStatus(deviceId: string = DEFAULT_DEVICE_ID) {
 
   // Realtime devices (contratto): invalidazione cache device
   useEffect(() => {
-    if (!cloudConfigured || !device?.id) return;
+    if (!cloudConfigured || !deviceKey) return;
     const channel = supabase
-      .channel(`device-${device.id}`)
+      .channel(`device-${deviceKey}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "devices",
-          filter: `id=eq.${device.id}`,
+          filter: `device_id=eq.${deviceKey}`,
         },
         () => {
           void queryClient.invalidateQueries({ queryKey: ["devices"] });
@@ -75,7 +81,7 @@ export function useGetStatus(deviceId: string = DEFAULT_DEVICE_ID) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [cloudConfigured, device?.id, queryClient]);
+  }, [cloudConfigured, deviceKey, queryClient]);
 
   const refresh = useCallback(async () => {
     if (!cloudConfigured) {

@@ -110,7 +110,9 @@ export type CommandStatus =
   "PENDING" | "ACKNOWLEDGED" | "EXECUTING" | "COMPLETED" | "FAILED" | "REJECTED" | string;
 
 export type CommandRow = {
+  /** Canonical Agent field: commands.command_id */
   id: string;
+  command_id?: string;
   command_type: string;
   status: CommandStatus;
   result: GetStatusResult | null;
@@ -135,13 +137,14 @@ export function dataMode(): "CLOUD" | "DEMO" {
   return isCloudConfigured() ? "CLOUD" : "DEMO";
 }
 
-/** Normalizza row Lovable (id) o contratto Python (command_id). */
+/** Canonical Agent row uses command_id; accept legacy id only as fallback. */
 export function normalizeCommandRow(raw: Record<string, unknown> | null): CommandRow | null {
   if (!raw) return null;
-  const id = String(raw["id"] ?? raw["command_id"] ?? "");
-  if (!id) return null;
+  const commandId = String(raw["command_id"] ?? raw["id"] ?? "");
+  if (!commandId) return null;
   return {
-    id,
+    id: commandId,
+    command_id: commandId,
     command_type: String(raw["command_type"] ?? ""),
     status: String(raw["status"] ?? "PENDING"),
     result:
@@ -149,7 +152,7 @@ export function normalizeCommandRow(raw: Record<string, unknown> | null): Comman
         ? (raw["result"] as GetStatusResult)
         : null,
     error: (raw["error"] as string | null) ?? null,
-    requested_at: String(raw["requested_at"] ?? ""),
+    requested_at: String(raw["requested_at"] ?? raw["created_at"] ?? ""),
     expires_at: (raw["expires_at"] as string | null) ?? null,
     acknowledged_at: (raw["acknowledged_at"] as string | null) ?? null,
     started_at: (raw["started_at"] as string | null) ?? null,
@@ -175,13 +178,19 @@ export async function createGetStatusCommand(
 }
 
 export async function fetchCommand(commandId: string): Promise<CommandRow | null> {
-  const { data, error } = await supabase
+  // Agent contract PK: command_id
+  const byCanonical = await supabase
     .from("commands")
     .select("*")
-    .eq("id", commandId)
+    .eq("command_id" as never, commandId)
     .maybeSingle();
-  if (error) throw error;
-  return normalizeCommandRow(data as Record<string, unknown> | null);
+  if (!byCanonical.error && byCanonical.data) {
+    return normalizeCommandRow(byCanonical.data as Record<string, unknown>);
+  }
+  // Legacy Lovable fallback during cutover (id)
+  const byLegacy = await supabase.from("commands").select("*").eq("id", commandId).maybeSingle();
+  if (byLegacy.error) throw byLegacy.error;
+  return normalizeCommandRow(byLegacy.data as Record<string, unknown> | null);
 }
 
 export type WaitOutcome =
@@ -265,7 +274,7 @@ export function waitForGetStatusResult(
             event: "UPDATE",
             schema: "public",
             table: "commands",
-            filter: `id=eq.${commandId}`,
+            filter: `command_id=eq.${commandId}`,
           },
           (payload) => inspect(normalizeCommandRow(payload.new as Record<string, unknown>)),
         )

@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthenticatedApprovazioniRouteImport } from './routes/_authenticated/approvazioni'
+import { Route as AuthenticatedAttivitaRouteImport } from './routes/_authenticated/attivita'
 import { Route as AuthenticatedAuditRouteImport } from './routes/_authenticated/audit'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedDispositiviRouteImport } from './routes/_authenticated/dispositivi'
@@ -55,6 +56,11 @@ const AuthenticatedApprovazioniRoute =
     path: '/approvazioni',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAttivitaRoute = AuthenticatedAttivitaRouteImport.update({
+  id: '/attivita',
+  path: '/attivita',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedAuditRoute = AuthenticatedAuditRouteImport.update({
   id: '/audit',
   path: '/audit',
@@ -143,6 +149,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/reset-password': typeof ResetPasswordRoute
   '/approvazioni': typeof AuthenticatedApprovazioniRoute
+  '/attivita': typeof AuthenticatedAttivitaRoute
   '/audit': typeof AuthenticatedAuditRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dispositivi': typeof AuthenticatedDispositiviRouteWithChildren
@@ -164,6 +171,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/reset-password': typeof ResetPasswordRoute
   '/approvazioni': typeof AuthenticatedApprovazioniRoute
+  '/attivita': typeof AuthenticatedAttivitaRoute
   '/audit': typeof AuthenticatedAuditRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dispositivi': typeof AuthenticatedDispositiviRouteWithChildren
@@ -186,6 +194,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/reset-password': typeof ResetPasswordRoute
   '/_authenticated/approvazioni': typeof AuthenticatedApprovazioniRoute
+  '/_authenticated/attivita': typeof AuthenticatedAttivitaRoute
   '/_authenticated/audit': typeof AuthenticatedAuditRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/dispositivi': typeof AuthenticatedDispositiviRouteWithChildren
@@ -209,6 +218,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/reset-password'
     | '/approvazioni'
+    | '/attivita'
     | '/audit'
     | '/dashboard'
     | '/dispositivi'
@@ -230,6 +240,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/reset-password'
     | '/approvazioni'
+    | '/attivita'
     | '/audit'
     | '/dashboard'
     | '/dispositivi'
@@ -251,6 +262,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/reset-password'
     | '/_authenticated/approvazioni'
+    | '/_authenticated/attivita'
     | '/_authenticated/audit'
     | '/_authenticated/dashboard'
     | '/_authenticated/dispositivi'
@@ -310,6 +322,13 @@ declare module '@tanstack/react-router' {
       path: '/approvazioni'
       fullPath: '/approvazioni'
       preLoaderRoute: typeof AuthenticatedApprovazioniRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/attivita': {
+      id: '/_authenticated/attivita'
+      path: '/attivita'
+      fullPath: '/attivita'
+      preLoaderRoute: typeof AuthenticatedAttivitaRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/audit': {
@@ -452,6 +471,7 @@ const AuthenticatedModuliRouteWithChildren =
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedApprovazioniRoute: typeof AuthenticatedApprovazioniRoute
+  AuthenticatedAttivitaRoute: typeof AuthenticatedAttivitaRoute
   AuthenticatedAuditRoute: typeof AuthenticatedAuditRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDispositiviRoute: typeof AuthenticatedDispositiviRouteWithChildren
@@ -467,6 +487,7 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedApprovazioniRoute: AuthenticatedApprovazioniRoute,
+  AuthenticatedAttivitaRoute: AuthenticatedAttivitaRoute,
   AuthenticatedAuditRoute: AuthenticatedAuditRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDispositiviRoute: AuthenticatedDispositiviRouteWithChildren,
