@@ -6,14 +6,14 @@ import { CommandButton } from "@/components/vision/CommandButton";
 import { StatusBadge } from "@/components/vision/StatusBadge";
 import { Progress } from "@/components/ui/progress";
 import { useRoles } from "@/hooks/useAuth";
-import { formatDateTime, formatDuration } from "@/lib/vision";
+import { formatDateTime, formatDuration, REMOTE_NOT_ENABLED_LABEL } from "@/lib/vision";
 import {
-  sendCommand,
   useDevices,
   useJob,
   useJobEvents,
   useModules,
 } from "@/lib/vision-data";
+import { createGetStatusCommand, waitForGetStatusResult } from "@/lib/vision-remote-status";
 
 export const Route = createFileRoute("/_authenticated/jobs/$id")({
   head: () => ({
@@ -116,20 +116,10 @@ function JobDetail() {
             <CommandButton
               label="Riprova job"
               sensitive
-              disabled={!canOperate}
-              disabledReason="Il tuo ruolo non consente l'invio di comandi."
+              disabled
+              disabledReason={REMOTE_NOT_ENABLED_LABEL}
               onConfirm={async () => {
-                try {
-                  await sendCommand({
-                    command_type: "RETRY_JOB",
-                    module_id: job.module_id,
-                    target_device_id: job.device_id,
-                    job_id: job.id,
-                  });
-                  toast.success("Comando RETRY_JOB inviato");
-                } catch (e) {
-                  toast.error("COMANDO FALLITO", { description: (e as Error).message });
-                }
+                toast.error(REMOTE_NOT_ENABLED_LABEL);
               }}
             />
             <CommandButton
@@ -138,11 +128,15 @@ function JobDetail() {
               disabledReason="Il tuo ruolo non consente l'invio di comandi."
               onConfirm={async () => {
                 try {
-                  await sendCommand({
-                    command_type: "GET_STATUS",
-                    target_device_id: job.device_id,
-                  });
-                  toast.success("Comando GET_STATUS inviato");
+                  const code =
+                    devices.find((d: any) => d.id === job.device_id)?.code ?? "VIS-TARANTO-01";
+                  const cmd = await createGetStatusCommand(code);
+                  const wait = await waitForGetStatusResult(cmd.id);
+                  if (!wait.ok) {
+                    toast.error(wait.message);
+                  } else {
+                    toast.success("Stato aggiornato");
+                  }
                 } catch (e) {
                   toast.error("COMANDO FALLITO", { description: (e as Error).message });
                 }

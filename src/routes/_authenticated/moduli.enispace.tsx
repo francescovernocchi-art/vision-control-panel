@@ -7,8 +7,14 @@ import { AppShell } from "@/components/vision/AppShell";
 import { CommandButton } from "@/components/vision/CommandButton";
 import { StatusBadge } from "@/components/vision/StatusBadge";
 import { useRoles } from "@/hooks/useAuth";
-import { formatDateTime, formatRelative, isDeviceOnline } from "@/lib/vision";
-import { sendCommand, useDevices, useJobs, useModules } from "@/lib/vision-data";
+import {
+  formatDateTime,
+  formatRelative,
+  isDeviceOnline,
+  REMOTE_NOT_ENABLED_LABEL,
+} from "@/lib/vision";
+import { useDevices, useJobs, useModules } from "@/lib/vision-data";
+import { createGetStatusCommand, waitForGetStatusResult } from "@/lib/vision-remote-status";
 
 export const Route = createFileRoute("/_authenticated/moduli/enispace")({
   head: () => ({
@@ -38,25 +44,29 @@ function EnispacePage() {
   const current = moduleJobs.find((j: any) => j.id === module?.current_job_id) ?? moduleJobs[0];
   const meta = (current?.metadata ?? {}) as Record<string, unknown>;
 
-  const disabledReason = !canOperate
+  const remoteBlocked = REMOTE_NOT_ENABLED_LABEL;
+  const statusDisabledReason = !canOperate
     ? "Il tuo ruolo non consente l'invio di comandi."
     : !agentOnline
       ? `Impossibile inviare il comando: ${device?.code ?? "agent"} non è raggiungibile.`
       : undefined;
 
-  async function run(commandType: Parameters<typeof sendCommand>[0]["command_type"], jobId?: string) {
+  async function runGetStatus() {
     try {
-      await sendCommand({
-        command_type: commandType,
-        module_id: module?.id,
-        target_device_id: device?.id,
-        job_id: jobId ?? null,
-      });
-      toast.success("Comando inviato", { description: `${commandType} → ${device?.code}` });
+      const cmd = await createGetStatusCommand(device?.code ?? "VIS-TARANTO-01");
+      const wait = await waitForGetStatusResult(cmd.id);
+      if (!wait.ok) {
+        toast.error(wait.reason === "timeout" ? wait.message : "GET_STATUS fallito", {
+          description: wait.message,
+        });
+      } else {
+        toast.success("Stato aggiornato", { description: device?.code });
+      }
       void queryClient.invalidateQueries({ queryKey: ["commands"] });
+      void queryClient.invalidateQueries({ queryKey: ["devices"] });
     } catch (e) {
       toast.error("COMANDO FALLITO", {
-        description: `${commandType}: ${(e as Error).message}`,
+        description: `GET_STATUS: ${(e as Error).message}`,
       });
     }
   }
@@ -120,28 +130,35 @@ function EnispacePage() {
 
         <div className="hud-panel space-y-3 p-4">
           <p className="hud-title">Comandi autorizzati</p>
+          <p className="text-[0.65rem] text-muted-foreground">
+            Fase remota status_only — comandi operativi: {REMOTE_NOT_ENABLED_LABEL}.
+          </p>
           <div className="flex flex-wrap gap-2">
             <CommandButton
               label="Controlla ora le mail"
               icon={<Mail className="size-4" />}
-              disabled={!!disabledReason}
-              disabledReason={disabledReason}
-              onConfirm={() => run("CHECK_ENISPACE_MAIL")}
+              disabled
+              disabledReason={remoteBlocked}
+              onConfirm={async () => {
+                toast.error(remoteBlocked);
+              }}
             />
             <CommandButton
               label="Riprova ultimo job"
               sensitive
               icon={<RefreshCw className="size-4" />}
-              disabled={!!disabledReason || !current}
-              disabledReason={disabledReason}
+              disabled
+              disabledReason={remoteBlocked}
               description={`Verrà richiesto al Core di rieseguire ${current?.code ?? "l'ultimo job"}.`}
-              onConfirm={() => run("RETRY_JOB", current?.id)}
+              onConfirm={async () => {
+                toast.error(remoteBlocked);
+              }}
             />
             <CommandButton
               label="Stato agent"
-              disabled={!!disabledReason}
-              disabledReason={disabledReason}
-              onConfirm={() => run("GET_STATUS")}
+              disabled={!!statusDisabledReason}
+              disabledReason={statusDisabledReason}
+              onConfirm={() => runGetStatus()}
             />
           </div>
           <div className="flex flex-wrap gap-2">

@@ -6,7 +6,11 @@ import { CommandButton } from "@/components/vision/CommandButton";
 import { StatusBadge, StatusDot } from "@/components/vision/StatusBadge";
 import { useRoles } from "@/hooks/useAuth";
 import { formatDateTime, formatRelative, isDeviceOnline } from "@/lib/vision";
-import { sendCommand, useCommands, useDevices, useJobs, useModules } from "@/lib/vision-data";
+import { useCommands, useDevices, useJobs, useModules } from "@/lib/vision-data";
+import {
+  createGetStatusCommand,
+  waitForGetStatusResult,
+} from "@/lib/vision-remote-status";
 
 export const Route = createFileRoute("/_authenticated/dispositivi")({
   head: () => ({
@@ -79,17 +83,19 @@ function DispositiviPage() {
   const { canOperate } = useRoles();
 
   return (
-    <AppShell title="Dispositivi" subtitle="PC / Agent VIS•ION">
+    <AppShell title="Dispositivi" subtitle="PC / Agent VIS•ION — GET_STATUS only">
       <div className="grid gap-3 md:grid-cols-2">
         {devices.map((d: any) => {
-          const online = isDeviceOnline(d.last_seen_at, d.heartbeat_threshold_seconds ?? 120);
+          const online = isDeviceOnline(
+            d.last_seen_at,
+            d.heartbeat_threshold_seconds ?? 60,
+          );
           const effective = d.status === "DISABLED" ? "DISABLED" : online ? d.status : "OFFLINE";
           const currentJob = jobs.find((j: any) => j.id === d.current_job_id);
           const lastStatus = commands.find(
             (c: any) => c.target_device_id === d.id && c.command_type === "GET_STATUS",
           );
           return (
-
             <div key={d.id} className="hud-panel space-y-3 p-4">
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                 <div className="min-w-0">
@@ -115,7 +121,11 @@ function DispositiviPage() {
                   <dt className="text-muted-foreground">Versione agent</dt>
                   <dd className="font-mono">{d.agent_version ?? "—"}</dd>
                 </div>
-                <div className="min-w-0">
+                <div>
+                  <dt className="text-muted-foreground">Platform</dt>
+                  <dd className="font-mono">{d.platform_version ?? "—"}</dd>
+                </div>
+                <div className="min-w-0 col-span-2">
                   <dt className="text-muted-foreground">Job corrente</dt>
                   <dd className="truncate font-mono">{currentJob?.code ?? "—"}</dd>
                 </div>
@@ -134,16 +144,17 @@ function DispositiviPage() {
 
               <CommandButton
                 label="Richiedi stato"
-                disabled={!canOperate || !online}
-                disabledReason={
-                  !canOperate
-                    ? "Il tuo ruolo non consente l'invio di comandi."
-                    : `AGENT OFFLINE — ${d.code} non è raggiungibile.`
-                }
+                disabled={!canOperate}
+                disabledReason="Il tuo ruolo non consente l'invio di comandi."
                 onConfirm={async () => {
                   try {
-                    await sendCommand({ command_type: "GET_STATUS", target_device_id: d.id });
-                    toast.success("Comando GET_STATUS inviato");
+                    const cmd = await createGetStatusCommand(d.code);
+                    const wait = await waitForGetStatusResult(cmd.id);
+                    if (!wait.ok) {
+                      toast.error(wait.message);
+                    } else {
+                      toast.success("Stato aggiornato", { description: d.code });
+                    }
                   } catch (e) {
                     toast.error("COMANDO FALLITO", { description: (e as Error).message });
                   }

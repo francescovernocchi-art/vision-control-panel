@@ -85,6 +85,7 @@ function ImpostazioniPage() {
                 <span className="shrink-0 text-[0.6rem] text-muted-foreground">
                   {cfg.roles.join("/")}
                   {cfg.sensitive ? " · sensibile" : ""}
+                  {cfg.remoteEnabled ? " · remoto ON" : " · NON ANCORA ABILITATO"}
                 </span>
               </li>
             ))}

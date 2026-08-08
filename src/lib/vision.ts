@@ -39,25 +39,60 @@ export type CommandType =
 
 export const COMMAND_WHITELIST: Record<
   CommandType,
-  { label: string; sensitive: boolean; roles: AppRole[] }
+  { label: string; sensitive: boolean; roles: AppRole[]; remoteEnabled: boolean }
 > = {
-  GET_STATUS: { label: "Stato agent", sensitive: false, roles: ["ADMIN", "OPERATORE"] },
+  GET_STATUS: {
+    label: "Stato agent",
+    sensitive: false,
+    roles: ["ADMIN", "OPERATORE"],
+    remoteEnabled: true,
+  },
   CHECK_ENISPACE_MAIL: {
     label: "Controlla ora le mail",
     sensitive: false,
     roles: ["ADMIN", "OPERATORE"],
+    remoteEnabled: false,
   },
-  RETRY_JOB: { label: "Riprova ultimo job", sensitive: true, roles: ["ADMIN", "OPERATORE"] },
-  PAUSE_MODULE: { label: "Metti in pausa modulo", sensitive: true, roles: ["ADMIN"] },
-  RESUME_MODULE: { label: "Riattiva modulo", sensitive: true, roles: ["ADMIN"] },
+  RETRY_JOB: {
+    label: "Riprova ultimo job",
+    sensitive: true,
+    roles: ["ADMIN", "OPERATORE"],
+    remoteEnabled: false,
+  },
+  PAUSE_MODULE: {
+    label: "Metti in pausa modulo",
+    sensitive: true,
+    roles: ["ADMIN"],
+    remoteEnabled: false,
+  },
+  RESUME_MODULE: {
+    label: "Riattiva modulo",
+    sensitive: true,
+    roles: ["ADMIN"],
+    remoteEnabled: false,
+  },
   PREPARE_COIN_TRANSPORT: {
     label: "Prepara trasporto monete",
     sensitive: true,
     roles: ["ADMIN", "OPERATORE"],
+    remoteEnabled: false,
   },
-  APPROVE_JOB: { label: "Approva lavorazione", sensitive: true, roles: ["ADMIN", "OPERATORE"] },
-  REJECT_JOB: { label: "Rifiuta lavorazione", sensitive: true, roles: ["ADMIN", "OPERATORE"] },
+  APPROVE_JOB: {
+    label: "Approva lavorazione",
+    sensitive: true,
+    roles: ["ADMIN", "OPERATORE"],
+    remoteEnabled: false,
+  },
+  REJECT_JOB: {
+    label: "Rifiuta lavorazione",
+    sensitive: true,
+    roles: ["ADMIN", "OPERATORE"],
+    remoteEnabled: false,
+  },
 };
+
+/** Messaggio UI per comandi remoti non ancora abilitati (status_only). */
+export const REMOTE_NOT_ENABLED_LABEL = "NON ANCORA ABILITATO";
 
 export type Tone = "success" | "warning" | "danger" | "info" | "muted";
 

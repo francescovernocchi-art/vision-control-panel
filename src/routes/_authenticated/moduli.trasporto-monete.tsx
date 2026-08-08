@@ -1,18 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
 import { Check, FileText, Mail, Truck, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/vision/AppShell";
 import { CommandButton } from "@/components/vision/CommandButton";
 import { StatusBadge } from "@/components/vision/StatusBadge";
-import { useRoles } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { COIN_WORKFLOW, formatRelative, isDeviceOnline } from "@/lib/vision";
+import { COIN_WORKFLOW, formatRelative, REMOTE_NOT_ENABLED_LABEL } from "@/lib/vision";
 import {
-  logAudit,
-  sendCommand,
   useApprovals,
   useDevices,
   useJobs,
@@ -33,8 +28,6 @@ export const Route = createFileRoute("/_authenticated/moduli/trasporto-monete")(
 });
 
 function CoinPage() {
-  const queryClient = useQueryClient();
-  const { canOperate } = useRoles();
   const { data: modules = [] } = useModules();
   const { data: jobs = [] } = useJobs();
   const { data: devices = [] } = useDevices();
@@ -42,8 +35,6 @@ function CoinPage() {
 
   const module = modules.find((m: any) => m.key === "coin_transport");
   const device = devices[0];
-  const agentOnline =
-    device && isDeviceOnline(device.last_seen_at, device.heartbeat_threshold_seconds ?? 120);
   const moduleJobs = jobs.filter((j: any) => j.module_id === module?.id);
   const current = moduleJobs.find((j: any) => j.id === module?.current_job_id) ?? moduleJobs[0];
   const approval = approvals.find((a: any) => a.job_id === current?.id && a.status === "PENDING");
@@ -55,40 +46,15 @@ function CoinPage() {
     COIN_WORKFLOW.indexOf((current?.current_step ?? "MAIL").toUpperCase() as never),
   );
 
-  const disabledReason = !canOperate
-    ? "Il tuo ruolo non consente l'invio di comandi."
-    : !agentOnline
-      ? `Impossibile inviare il comando: ${device?.code ?? "agent"} non è raggiungibile.`
-      : undefined;
+  const disabledReason = REMOTE_NOT_ENABLED_LABEL;
 
   async function decide(status: "APPROVED" | "CHANGES_REQUESTED") {
     if (!approval) return;
-    const { data: userData } = await supabase.auth.getUser();
-    const { error } = await supabase
-      .from("approvals")
-      .update({
-        status,
-        decided_at: new Date().toISOString(),
-        decided_by: userData.user?.id ?? null,
-      })
-      .eq("id", approval.id);
-    if (error) {
-      toast.error("Operazione non riuscita", { description: error.message });
-      return;
-    }
-    await sendCommand({
-      command_type: status === "APPROVED" ? "APPROVE_JOB" : "REJECT_JOB",
-      module_id: module?.id,
-      target_device_id: device?.id,
-      job_id: approval.job_id,
+    toast.error(REMOTE_NOT_ENABLED_LABEL, {
+      description: "Comandi remoti APPROVE/REJECT non abilitati in questa fase.",
     });
-    await logAudit({
-      action: status === "APPROVED" ? "APPROVAL_APPROVED" : "APPROVAL_CHANGES_REQUESTED",
-      module_id: module?.id,
-      job_id: approval.job_id,
-    });
-    toast.success(status === "APPROVED" ? "Approvato" : "Modifica richiesta");
-    void queryClient.invalidateQueries({ queryKey: ["approvals"] });
+    void status;
+    void device;
   }
 
   return (
@@ -187,19 +153,10 @@ function CoinPage() {
             <CommandButton
               label="Prepara trasporto monete"
               sensitive
-              disabled={!!disabledReason}
+              disabled
               disabledReason={disabledReason}
               onConfirm={async () => {
-                try {
-                  await sendCommand({
-                    command_type: "PREPARE_COIN_TRANSPORT",
-                    module_id: module?.id,
-                    target_device_id: device?.id,
-                  });
-                  toast.success("Comando inviato");
-                } catch (e) {
-                  toast.error("COMANDO FALLITO", { description: (e as Error).message });
-                }
+                toast.error(REMOTE_NOT_ENABLED_LABEL);
               }}
             />
           </div>
@@ -209,14 +166,15 @@ function CoinPage() {
           <div className="hud-panel border-warning/40 space-y-3 p-4">
             <p className="hud-title text-warning">PEC pronta per approvazione</p>
             <p className="text-sm">{approval.description}</p>
+            <p className="text-xs text-muted-foreground">{REMOTE_NOT_ENABLED_LABEL}</p>
             <div className="flex flex-wrap gap-2">
               <CommandButton
                 label="Approva"
                 variant="default"
                 sensitive
                 icon={<Check className="size-4" />}
-                disabled={!canOperate}
-                disabledReason="Il tuo ruolo non consente approvazioni."
+                disabled
+                disabledReason={REMOTE_NOT_ENABLED_LABEL}
                 description="Confermi l'approvazione della PEC? L'invio effettivo resta a carico dell'Agent e non è attivo."
                 onConfirm={() => decide("APPROVED")}
               />
@@ -225,8 +183,8 @@ function CoinPage() {
                 variant="destructive"
                 sensitive
                 icon={<X className="size-4" />}
-                disabled={!canOperate}
-                disabledReason="Il tuo ruolo non consente approvazioni."
+                disabled
+                disabledReason={REMOTE_NOT_ENABLED_LABEL}
                 onConfirm={() => decide("CHANGES_REQUESTED")}
               />
             </div>

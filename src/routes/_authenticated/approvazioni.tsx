@@ -6,10 +6,9 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/vision/AppShell";
 import { CommandButton } from "@/components/vision/CommandButton";
 import { StatusBadge } from "@/components/vision/StatusBadge";
-import { useRoles } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { formatDateTime } from "@/lib/vision";
-import { logAudit, sendCommand, useApprovals, useJobs, useModules } from "@/lib/vision-data";
+import { formatDateTime, REMOTE_NOT_ENABLED_LABEL } from "@/lib/vision";
+import { logAudit, useApprovals, useJobs, useModules } from "@/lib/vision-data";
 
 export const Route = createFileRoute("/_authenticated/approvazioni")({
   head: () => ({
@@ -26,7 +25,6 @@ export const Route = createFileRoute("/_authenticated/approvazioni")({
 
 function ApprovazioniPage() {
   const queryClient = useQueryClient();
-  const { canOperate } = useRoles();
   const { data: approvals = [] } = useApprovals();
   const { data: jobs = [] } = useJobs();
   const { data: modules = [] } = useModules();
@@ -51,17 +49,9 @@ function ApprovazioniPage() {
       return;
     }
     if (status !== "CANCELLED") {
-      const job = jobs.find((j: any) => j.id === approval.job_id);
-      try {
-        await sendCommand({
-          command_type: status === "APPROVED" ? "APPROVE_JOB" : "REJECT_JOB",
-          module_id: approval.module_id,
-          target_device_id: job?.device_id ?? null,
-          job_id: approval.job_id,
-        });
-      } catch (e) {
-        toast.error("Comando non inviato", { description: (e as Error).message });
-      }
+      toast.error(REMOTE_NOT_ENABLED_LABEL, {
+        description: "APPROVE_JOB / REJECT_JOB non abilitati in remoto (status_only).",
+      });
     }
     await logAudit({
       action: `APPROVAL_${status}`,
@@ -132,9 +122,9 @@ function ApprovazioniPage() {
                       variant="default"
                       sensitive
                       icon={<Check className="size-4" />}
-                      disabled={!canOperate}
-                      disabledReason="Il tuo ruolo è in sola consultazione."
-                      description="Operazione sensibile e irreversibile: verrà inviato il comando APPROVE_JOB al VIS•ION Core. La PEC non verrà inviata automaticamente."
+                      disabled
+                      disabledReason={REMOTE_NOT_ENABLED_LABEL}
+                      description="Operazione sensibile: comando remoto APPROVE_JOB non ancora abilitato."
                       details={details}
                       confirmKeyword="APPROVA"
                       confirmLabel="Approva definitivamente"
@@ -145,9 +135,9 @@ function ApprovazioniPage() {
                       variant="secondary"
                       sensitive
                       icon={<PenLine className="size-4" />}
-                      disabled={!canOperate}
-                      disabledReason="Il tuo ruolo è in sola consultazione."
-                      description="La richiesta tornerà all'operatore con esito 'modifiche richieste' e verrà inviato il comando REJECT_JOB."
+                      disabled
+                      disabledReason={REMOTE_NOT_ENABLED_LABEL}
+                      description="Comando remoto REJECT_JOB non ancora abilitato."
                       details={details}
                       confirmLabel="Richiedi modifica"
                       onConfirm={() => decide(a, "CHANGES_REQUESTED")}
@@ -157,8 +147,8 @@ function ApprovazioniPage() {
                       variant="destructive"
                       sensitive
                       icon={<X className="size-4" />}
-                      disabled={!canOperate}
-                      disabledReason="Il tuo ruolo è in sola consultazione."
+                      disabled
+                      disabledReason={REMOTE_NOT_ENABLED_LABEL}
                       description="Operazione sensibile e irreversibile: la richiesta verrà annullata e non sarà più lavorabile."
                       details={details}
                       confirmKeyword="RIFIUTA"

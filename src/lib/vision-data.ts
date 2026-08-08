@@ -160,6 +160,8 @@ export async function logAudit(entry: {
   });
 }
 
+export const REMOTE_NOT_ENABLED = "NON ANCORA ABILITATO";
+
 export async function sendCommand(input: {
   command_type: CommandType;
   module_id?: string | null;
@@ -167,33 +169,28 @@ export async function sendCommand(input: {
   job_id?: string | null;
   parameters?: Record<string, unknown>;
 }) {
+  // Fase status_only: solo GET_STATUS via RPC contratto (nessun insert diretto).
+  if (input.command_type !== "GET_STATUS") {
+    throw new Error(REMOTE_NOT_ENABLED);
+  }
+
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) throw new Error("Sessione scaduta. Effettua di nuovo il login.");
 
-  const { data, error } = await supabase
-    .from("commands")
-    .insert({
-      command_type: input.command_type,
-      module_id: input.module_id ?? null,
-      target_device_id: input.target_device_id ?? null,
-      job_id: input.job_id ?? null,
-      requested_by: userData.user.id,
-      status: "PENDING",
-      parameters: (input.parameters ?? {}) as never,
-    })
-    .select()
-    .single();
+  let deviceCode = "VIS-TARANTO-01";
+  if (input.target_device_id) {
+    const { data: device } = await supabase
+      .from("devices")
+      .select("code")
+      .eq("id", input.target_device_id)
+      .maybeSingle();
+    if (device?.code) deviceCode = device.code;
+  }
 
+  const { data, error } = await supabase.rpc("create_get_status_command" as never, {
+    p_device_id: deviceCode,
+  } as never);
   if (error) throw error;
-
-  await logAudit({
-    action: `COMMAND_SENT:${input.command_type}`,
-    module_id: input.module_id ?? null,
-    device_id: input.target_device_id ?? null,
-    job_id: input.job_id ?? null,
-    metadata: { command_id: data.id },
-  });
-
   return data;
 }
 
