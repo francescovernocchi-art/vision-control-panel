@@ -1,0 +1,58 @@
+{
+  "id": "enispace.automation",
+  "name": "eniSpace Automation",
+  "description": "Supervisione mail ENI/MdA, accesso eniSpace, download documenti e stampa.",
+  "version": "1.0.0",
+  "author": "VIS",
+  "required_core_version": ">=2.0.0-vision",
+  "module_id": "enispace",
+  "commands": [
+    "CHECK_ENISPACE_MAIL",
+    "RETRY_JOB",
+    "PAUSE_MODULE",
+    "RESUME_MODULE"
+  ],
+  "events": [
+    "MAIL_RECEIVED",
+    "MAIL_ANALYZED",
+    "JOB_CREATED",
+    "JOB_STARTED",
+    "JOB_PROGRESS",
+    "JOB_COMPLETED",
+    "JOB_FAILED",
+    "DOWNLOAD_STARTED",
+    "DOWNLOAD_COMPLETED",
+    "PRINT_STARTED",
+    "PRINT_COMPLETED",
+    "PRINT_FAILED",
+    "NEEDS_ATTENTION",
+    "MODULE_ONLINE",
+    "MODULE_OFFLINE"
+  ],
+  "permissions": [
+    "mail_watch",
+    "enispace_login",
+    "document_download",
+    "print_queue"
+  ],
+  "dependencies": [
+    "service:mail",
+    "service:print",
+    "service:logger",
+    "service:storage"
+  ],
+  "settings": {
+    "jarvis_interval_seconds": {
+      "type": "integer",
+      "default": 60,
+      "min": 15
+    },
+    "jarvis_simulation": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "icon": "assets/skills/enispace.png",
+  "category": "automation",
+  "visibility": "public"
+}

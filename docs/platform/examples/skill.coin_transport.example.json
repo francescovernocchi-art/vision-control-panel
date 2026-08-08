@@ -1,0 +1,49 @@
+{
+  "id": "coin_transport.sala_conta",
+  "name": "Trasporto Monete",
+  "description": "Workflow Sala Conta: analisi, mezzi, itinerari, documento, PEC in approvazione.",
+  "version": "0.1.0",
+  "author": "VIS",
+  "required_core_version": ">=2.0.0-vision",
+  "module_id": "coin_transport",
+  "commands": [
+    "PREPARE_COIN_TRANSPORT",
+    "APPROVE_JOB",
+    "REJECT_JOB"
+  ],
+  "events": [
+    "JOB_CREATED",
+    "JOB_STARTED",
+    "JOB_PROGRESS",
+    "DOCUMENT_CREATED",
+    "PEC_PREPARED",
+    "WAITING_APPROVAL",
+    "NEEDS_ATTENTION",
+    "JOB_COMPLETED",
+    "JOB_FAILED",
+    "MODULE_ONLINE",
+    "MODULE_OFFLINE"
+  ],
+  "permissions": [
+    "mail_analysis",
+    "document_generation",
+    "pec_prepare",
+    "approval_gate"
+  ],
+  "dependencies": [
+    "service:mail",
+    "service:pdf",
+    "service:logger",
+    "service:notification"
+  ],
+  "settings": {
+    "auto_send_pec": {
+      "type": "boolean",
+      "default": false,
+      "description": "Deve restare false salvo policy esplicita"
+    }
+  },
+  "icon": "assets/skills/coin_transport.png",
+  "category": "logistics",
+  "visibility": "public"
+}
