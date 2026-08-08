@@ -130,6 +130,8 @@ function DispositiviPage() {
                   </span>
                 ))}
               </div>
+              <StatusReadout command={lastStatus} />
+
               <CommandButton
                 label="Richiedi stato"
                 disabled={!canOperate || !online}
