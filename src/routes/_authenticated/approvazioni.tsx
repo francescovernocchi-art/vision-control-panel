@@ -77,8 +77,20 @@ function ApprovazioniPage() {
       <div className="space-y-3">
         {approvals.map((a: any) => {
           const province = ((a.metadata ?? {})["province"] as string[] | undefined) ?? [];
+          const moduleName =
+            modules.find((m: any) => m.id === a.module_id)?.name ?? "Sistema";
+          const job = jobs.find((j: any) => j.id === a.job_id);
+          const details = [
+            { label: "Modulo", value: moduleName },
+            { label: "Richiesta", value: a.title ?? "—" },
+            { label: "Dettaglio", value: a.description ?? "—" },
+            { label: "Lavorazione", value: job?.code ?? "—" },
+            { label: "Province", value: province.join(" / ") || "—" },
+            { label: "Richiesta il", value: formatDateTime(a.requested_at) },
+          ];
           return (
             <div key={a.id} className="hud-panel space-y-3 p-4">
+
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                 <div className="min-w-0">
                   <p className="hud-title">
