@@ -11,12 +11,14 @@ from app.platform.descriptors import (
     EventDescriptor,
     ModuleDescriptor,
 )
+from app.platform.skill_descriptor import SkillDescriptor
 
 __all__ = [
     "PlatformContext",
     "ModuleDescriptor",
     "CommandDescriptor",
     "EventDescriptor",
+    "SkillDescriptor",
     "bootstrap_platform",
     "get_platform_context",
 ]

@@ -1,0 +1,44 @@
+{
+  "id": "coin_transport",
+  "name": "Trasporto Monete",
+  "description": "Workflow Sala Conta fino a PEC in approvazione (scheletro).",
+  "version": "0.1.0",
+  "author": "VIS",
+  "required_core_version": ">=2.0.0-vision",
+  "module_id": "coin_transport",
+  "category": "operations",
+  "enabled": false,
+  "commands": [
+    "PREPARE_COIN_TRANSPORT",
+    "APPROVE_JOB",
+    "REJECT_JOB"
+  ],
+  "events": [
+    "JOB_CREATED",
+    "JOB_STARTED",
+    "JOB_PROGRESS",
+    "DOCUMENT_CREATED",
+    "PEC_PREPARED",
+    "WAITING_APPROVAL",
+    "JOB_COMPLETED",
+    "JOB_FAILED",
+    "NEEDS_ATTENTION"
+  ],
+  "permissions": [
+    "mail_analysis",
+    "document_generation",
+    "pec_prepare",
+    "approval_gate"
+  ],
+  "dependencies": [
+    "service:logger",
+    "service:notification"
+  ],
+  "icon": "assets/skills/coin_transport.png",
+  "visibility": "public",
+  "metadata": {
+    "status": "IN_DEVELOPMENT",
+    "auto_send_pec": false,
+    "dual_registration": true
+  }
+}

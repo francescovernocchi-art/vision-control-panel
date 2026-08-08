@@ -9,23 +9,40 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from app.platform.capability_registry import CapabilityRegistry
+from app.platform.consistency import run_consistency_check
 from app.platform.context import PlatformContext
 from app.platform.descriptors import (
     CommandDescriptor,
     EventDescriptor,
     ModuleDescriptor,
 )
+from app.platform.health_bridge import ModuleHealthBridge
 from app.platform.health_registry import HealthRegistry
 from app.platform.service_registry import ServiceRegistry
+from app.platform.skill_registry import SkillRegistry
 from utils.logger import get_logger
-from utils.paths import PRODUCT_NAME, config_dir, data_dir, logs_dir
+from utils.paths import PRODUCT_NAME, config_dir, data_dir, logs_dir, project_root
 
 logger = get_logger("platform.bootstrap")
 
 _CONTEXT: Optional[PlatformContext] = None
 
+# Percorsi skill dichiarati esplicitamente (NON discovery)
+_STATIC_SKILL_MANIFESTS = (
+    "app/modules/enispace/skill.json",
+    "app/modules/coin_transport/skill.json",
+)
+
 # Cataloghi statici per dual-registration eniSpace (nessuna esecuzione)
 _ENISPACE_COMMANDS = [
+    CommandDescriptor(
+        id="GET_STATUS",
+        display_name="Stato (via eniSpace catalog)",
+        description="Esposto anche nel catalogo skill eniSpace",
+        module="enispace",
+        permission="status_read",
+        implemented=True,
+    ),
     CommandDescriptor(
         id="CHECK_ENISPACE_MAIL",
         display_name="Controllo mail eniSpace",
@@ -90,7 +107,7 @@ def bootstrap_platform(
     force: bool = False,
 ) -> PlatformContext:
     """
-    Inizializza registri e dual-registra Core / eniSpace / Supervisor.
+    Inizializza registri e dual-registra Core / eniSpace / Supervisor / Skills.
     Idempotente: chiamate successive senza force restituiscono il context esistente.
     """
     global _CONTEXT
@@ -100,13 +117,15 @@ def bootstrap_platform(
     capability = CapabilityRegistry()
     health = HealthRegistry()
     services = ServiceRegistry()
+    skills = SkillRegistry()
 
     ctx = PlatformContext(
         capability=capability,
         health=health,
         services=services,
+        skills=skills,
         version="2.0-vision",
-        platform_version="0.1.0-foundation",
+        platform_version="0.2.0-skills-health",
         config={
             "product": PRODUCT_NAME,
             "config_dir": str(config_dir()),
@@ -131,15 +150,65 @@ def bootstrap_platform(
     # --- coin_transport catalog-only se già presente nel ModuleManager ---
     _register_coin_transport_catalog(ctx, core)
 
+    # --- Health dual-write bridge (source of truth resta ModuleManager) ---
+    bridge = ModuleHealthBridge(health)
+    ctx.health_bridge = bridge
+    if core is not None and hasattr(core, "modules"):
+        bridge.attach(core.modules)
+        bridge.attach_event_bus(getattr(core, "event_bus", None))
+        bridge.sync_from_manager(core.modules)
+    bridge.sync_core_and_supervisor(core=core, jarvis=jarvis)
+
+    # --- Skill manifests statici (percorsi espliciti) ---
+    _load_static_skills(ctx)
+
+    # --- Consistency (non blocca) ---
+    ctx.last_consistency = run_consistency_check(ctx)
+
     _CONTEXT = ctx
     logger.info(
-        "Platform initialized version=%s platform=%s services=%s modules=%s",
+        "Platform initialized version=%s platform=%s services=%s modules=%s skills=%s",
         ctx.version,
         ctx.platform_version,
         ctx.services.list_ids(),
         [m.id for m in ctx.capability.list_modules()],
+        [s.id for s in ctx.skills.list_skills()],
     )
     return ctx
+
+
+def _load_static_skills(ctx: PlatformContext) -> None:
+    root = project_root()
+    for rel in _STATIC_SKILL_MANIFESTS:
+        path = root / rel
+        skill = ctx.skills.load_skill_manifest(path)
+        if skill is None:
+            continue
+        # Sync catalogo: warning se mismatch, no auto-fix runtime
+        mod = ctx.capability.get_module(skill.module_id)
+        if mod is None:
+            logger.warning(
+                "Skill %s: module_id=%s assente in CapabilityRegistry",
+                skill.id,
+                skill.module_id,
+            )
+            continue
+        for cmd in skill.commands:
+            if cmd not in mod.commands:
+                logger.warning(
+                    "Skill/capability mismatch: skill=%s command=%s non in module %s",
+                    skill.id,
+                    cmd,
+                    mod.id,
+                )
+        for ev in skill.events:
+            if ev not in mod.events:
+                logger.warning(
+                    "Skill/capability mismatch: skill=%s event=%s non in module %s",
+                    skill.id,
+                    ev,
+                    mod.id,
+                )
 
 
 def _register_services(ctx: PlatformContext, core: Any) -> None:
@@ -315,10 +384,20 @@ def _register_coin_transport_catalog(ctx: PlatformContext, core: Any) -> None:
             version=str(getattr(info, "version", "0.1")),
             status=status,
             commands=["PREPARE_COIN_TRANSPORT", "APPROVE_JOB", "REJECT_JOB"],
-            events=["PEC_PREPARED", "WAITING_APPROVAL", "JOB_CREATED"],
-            permissions=["pec_prepare", "approval_gate"],
-            dependencies=["service:logger"],
-            metadata={"dual_registration": True, "skeleton": True},
+            events=[
+                "JOB_CREATED",
+                "JOB_STARTED",
+                "JOB_PROGRESS",
+                "DOCUMENT_CREATED",
+                "PEC_PREPARED",
+                "WAITING_APPROVAL",
+                "JOB_COMPLETED",
+                "JOB_FAILED",
+                "NEEDS_ATTENTION",
+            ],
+            permissions=["pec_prepare", "approval_gate", "mail_analysis", "document_generation"],
+            dependencies=["service:logger", "service:notification"],
+            metadata={"dual_registration": True, "skeleton": True, "status": "IN_DEVELOPMENT"},
         )
     )
     for cmd_id, title, impl in (

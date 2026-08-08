@@ -50,6 +50,16 @@ class ModuleManager:
         self._lock = threading.RLock()
         self._modules: dict[str, VisionModule] = {}
         self._infos: dict[str, ModuleInfo] = {}
+        self._status_listeners: list[Any] = []
+
+    def add_status_listener(self, callback: Any) -> None:
+        """Listener opzionale per dual-write Health (platform layer)."""
+        if callback not in self._status_listeners:
+            self._status_listeners.append(callback)
+
+    def remove_status_listener(self, callback: Any) -> None:
+        if callback in self._status_listeners:
+            self._status_listeners.remove(callback)
 
     def register(self, module: VisionModule) -> ModuleInfo:
         info = module.info
@@ -57,6 +67,7 @@ class ModuleManager:
             self._modules[info.id] = module
             self._infos[info.id] = info
         logger.info("Modulo registrato: %s (%s) v%s", info.name, info.id, info.version)
+        self._notify_status(info.id, info.status)
         return info
 
     def unregister(self, module_id: str) -> None:
@@ -83,6 +94,14 @@ class ModuleManager:
             if not info:
                 return
             info.status = str(status)
+        self._notify_status(module_id, str(status))
+
+    def _notify_status(self, module_id: str, status: str) -> None:
+        for cb in list(self._status_listeners):
+            try:
+                cb(module_id, status)
+            except Exception as exc:  # noqa: BLE001 — dual-write non deve rompere runtime
+                logger.warning("status listener error (%s): %s", module_id, exc)
 
     def start_all(self) -> None:
         with self._lock:
