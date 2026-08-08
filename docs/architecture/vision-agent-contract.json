@@ -1,0 +1,86 @@
+{
+  "product": "VISION",
+  "api_version": "v1",
+  "contract_version": "1.0.0",
+  "remote_policy": "status_only",
+  "allowed_remote_commands": ["GET_STATUS"],
+  "device_identity": {
+    "field": "device_id",
+    "type": "text",
+    "example": "VIS-TARANTO-01",
+    "notes": "Public logical code; Agent VISION_DEVICE_ID; devices PK"
+  },
+  "command_statuses": [
+    "PENDING",
+    "ACKNOWLEDGED",
+    "EXECUTING",
+    "COMPLETED",
+    "FAILED",
+    "REJECTED"
+  ],
+  "rpc": [
+    "agent_heartbeat",
+    "agent_fetch_pending_commands",
+    "agent_update_command",
+    "create_get_status_command"
+  ],
+  "get_status_top_level": [
+    "ok",
+    "api_version",
+    "contract_version",
+    "device_id",
+    "device_name",
+    "agent_version",
+    "vision_version",
+    "platform_version",
+    "timestamp",
+    "core_status",
+    "supervisor_status",
+    "overall_health",
+    "current_job",
+    "queue_size",
+    "modules",
+    "skills",
+    "services",
+    "warnings",
+    "remote_control_enabled",
+    "agent",
+    "partial",
+    "missing_sections",
+    "vision_core",
+    "enispace_runtime"
+  ],
+  "vision_core": [
+    "online",
+    "product",
+    "product_name",
+    "assistant",
+    "assistant_state",
+    "started_at"
+  ],
+  "enispace_runtime": [
+    "status",
+    "available",
+    "active",
+    "pending_jobs",
+    "current_job",
+    "last_job",
+    "last_mail_check",
+    "last_error",
+    "detail_state"
+  ],
+  "branding": {
+    "user_facing_product": "VISION",
+    "forbidden_user_facing": ["JARVIS"],
+    "internal_legacy_assistant_field": "vision_core.assistant"
+  },
+  "security": {
+    "browser_to_agent": false,
+    "service_role_in_frontend": false,
+    "agent_token_in_frontend": false,
+    "token_storage": {
+      "raw": "agent_env_only",
+      "hash": "agent_api_tokens.token_hash_sha256"
+    }
+  }
+}
