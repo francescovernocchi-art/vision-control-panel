@@ -134,7 +134,10 @@ function ApprovazioniPage() {
                       icon={<Check className="size-4" />}
                       disabled={!canOperate}
                       disabledReason="Il tuo ruolo è in sola consultazione."
-                      description="Operazione sensibile: confermi l'approvazione? La PEC non verrà inviata automaticamente."
+                      description="Operazione sensibile e irreversibile: verrà inviato il comando APPROVE_JOB al VIS•ION Core. La PEC non verrà inviata automaticamente."
+                      details={details}
+                      confirmKeyword="APPROVA"
+                      confirmLabel="Approva definitivamente"
                       onConfirm={() => decide(a, "APPROVED")}
                     />
                     <CommandButton
@@ -144,19 +147,27 @@ function ApprovazioniPage() {
                       icon={<PenLine className="size-4" />}
                       disabled={!canOperate}
                       disabledReason="Il tuo ruolo è in sola consultazione."
+                      description="La richiesta tornerà all'operatore con esito 'modifiche richieste' e verrà inviato il comando REJECT_JOB."
+                      details={details}
+                      confirmLabel="Richiedi modifica"
                       onConfirm={() => decide(a, "CHANGES_REQUESTED")}
                     />
                     <CommandButton
-                      label="Annulla"
+                      label="Rifiuta"
                       variant="destructive"
                       sensitive
                       icon={<X className="size-4" />}
                       disabled={!canOperate}
                       disabledReason="Il tuo ruolo è in sola consultazione."
+                      description="Operazione sensibile e irreversibile: la richiesta verrà annullata e non sarà più lavorabile."
+                      details={details}
+                      confirmKeyword="RIFIUTA"
+                      confirmLabel="Rifiuta definitivamente"
                       onConfirm={() => decide(a, "CANCELLED")}
                     />
                   </>
                 )}
+
               </div>
             </div>
           );
