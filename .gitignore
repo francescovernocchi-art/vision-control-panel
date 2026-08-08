@@ -15,12 +15,17 @@ env/
 *.spec
 *.manifest
 
-# Application data (local runtime)
+# Application data (local runtime) — VIS•ION isolate
 data/enispace.db
 data/enispace.db-*
+data/vision.db
+data/vision.db-*
+data/vision_jobs.db
+data/vision_jobs.db-*
 data/browser-profile/**
 !data/browser-profile/.gitkeep
 logs/*.log
+logs/modules/**
 downloads/**
 
 # IDE / OS

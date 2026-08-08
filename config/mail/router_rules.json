@@ -1,0 +1,49 @@
+{
+  "rules": [
+    {
+      "id": "enispace_mda",
+      "module_id": "enispace",
+      "priority": 10,
+      "match": {
+        "subject_any": [
+          "Modulo di Acquisizione",
+          "MdA",
+          "ordine di acquisto",
+          "Documento di Acquisizione"
+        ],
+        "sender_any": [
+          "@eni.com",
+          "enispace",
+          "noreply"
+        ],
+        "folder_any": [
+          "MdA_Eni",
+          "MDA"
+        ]
+      }
+    },
+    {
+      "id": "coin_transport_sala_conta",
+      "module_id": "coin_transport",
+      "priority": 20,
+      "match": {
+        "subject_any": [
+          "Sala Conta",
+          "Trasporto Monete",
+          "trasporto monete",
+          "mezzi monetari"
+        ],
+        "sender_any": [
+          "sala conta",
+          "salaconta"
+        ],
+        "attachment_any": [
+          ".pdf",
+          ".xlsx",
+          ".xls"
+        ]
+      }
+    }
+  ],
+  "default_action": "NEEDS_CLASSIFICATION"
+}

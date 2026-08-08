@@ -91,13 +91,13 @@ def unregister_gui_callback(callback: Callable[[str], None]) -> None:
 def setup_logging(debug: bool = False) -> logging.Logger:
     """Configura logging su file giornaliero e console."""
     global _configured
-    logger = logging.getLogger("enispace")
+    logger = logging.getLogger("vision")
     if _configured:
         set_debug_mode(debug)
         return logger
 
     logs_dir().mkdir(parents=True, exist_ok=True)
-    log_file = logs_dir() / f"enispace-{date.today().isoformat()}.log"
+    log_file = logs_dir() / f"vision-{date.today().isoformat()}.log"
 
     logger.setLevel(logging.DEBUG)
     logger.handlers.clear()
@@ -139,5 +139,8 @@ def setup_logging(debug: bool = False) -> logging.Logger:
 
 def get_logger(name: str | None = None) -> logging.Logger:
     if name:
-        return logging.getLogger(f"enispace.{name}")
-    return logging.getLogger("enispace")
+        # Mantieni gerarchia sotto vision.* (e alias legacy enispace.*)
+        if name.startswith("vision.") or name.startswith("enispace."):
+            return logging.getLogger(name)
+        return logging.getLogger(f"vision.{name}")
+    return logging.getLogger("vision")

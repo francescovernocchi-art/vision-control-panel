@@ -1,0 +1,5 @@
+{
+  "module": "enispace",
+  "enabled": true,
+  "notes": "Config specifica eniSpace — credenziali via keyring, settings in vision.db"
+}

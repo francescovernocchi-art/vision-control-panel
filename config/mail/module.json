@@ -1,0 +1,4 @@
+{
+  "provider": "imap",
+  "notes": "Regole router in router_rules.json; credenziali in keyring VIS-ION-Mail"
+}

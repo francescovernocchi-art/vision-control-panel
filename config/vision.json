@@ -1,0 +1,12 @@
+{
+  "product": "VIS•ION",
+  "full_name": "VIS Intelligent Operations Network",
+  "assistant_name": "JARVIS",
+  "assistant_future_names": ["VISION Assistant", "VIS•ION Supervisor"],
+  "database": "data/vision.db",
+  "jobs_database": "data/vision_jobs.db",
+  "download_folder_name": "VIS-ION",
+  "keyring_service": "VIS-ION",
+  "keyring_mail_service": "VIS-ION-Mail",
+  "keyring_legacy_fallback": true
+}

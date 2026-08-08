@@ -1,0 +1,8 @@
+{
+  "module": "coin_transport",
+  "enabled": true,
+  "status": "IN_DEVELOPMENT",
+  "auto_send_pec": false,
+  "final_status": "PEC PRONTA PER APPROVAZIONE",
+  "approval_actions": ["APRI", "MODIFICA", "APPROVA E INVIA"]
+}

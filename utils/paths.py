@@ -1,29 +1,42 @@
-"""Percorsi applicativi centralizzati."""
+"""Percorsi e branding applicativi centralizzati — VIS•ION."""
 
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
+# ---------------------------------------------------------------------------
+# Product branding (VIS•ION) — assistant name kept separate for gradual rename
+# ---------------------------------------------------------------------------
+PRODUCT_NAME = "VIS•ION"
+PRODUCT_FULL_NAME = "VIS Intelligent Operations Network"
+PRODUCT_DESCRIPTION = "Supervisore intelligente delle automazioni operative VIS"
+ASSISTANT_NAME = "JARVIS"  # futuro: VISION Assistant / VIS•ION Supervisor
+ASSISTANT_TECHNICAL_NAME = "JARVIS"
 
-APP_NAME = "VIS eniSpace Utility"
-APP_SHORT_NAME = "VIS-eniSpace-Utility"
-DOWNLOAD_FOLDER_NAME = "VIS eniSpace"
-KEYRING_SERVICE = "VIS-eniSpace-Utility"
-# Credenziali casella IMAP/SMTP (separate dal login eniSpace)
-KEYRING_MAIL_SERVICE = "VIS-eniSpace-Utility-Mail"
+# Compatibility aliases used across legacy UI / services
+APP_NAME = PRODUCT_NAME
+APP_SHORT_NAME = "VIS-ION"
+APP_LEGACY_NAME = "VIS eniSpace Utility"
+APP_SUBTITLE = PRODUCT_FULL_NAME
+
+DOWNLOAD_FOLDER_NAME = "VIS-ION"
+
+# Keyring: product-specific + legacy fallback for verification without re-entry
+KEYRING_SERVICE = "VIS-ION"
+KEYRING_SERVICE_LEGACY = "VIS-eniSpace-Utility"
+KEYRING_MAIL_SERVICE = "VIS-ION-Mail"
+KEYRING_MAIL_SERVICE_LEGACY = "VIS-eniSpace-Utility-Mail"
+
 ENISPACE_HOME_URL = "https://enispace.eni.com/it_IT/home.page"
 ENISPACE_MYHOME_URL = "https://enispace.eni.com/it_IT/private/myhome.page"
-# Elenco ordini/consuntivi (verificato in REGISTRA NAVIGAZIONE) — percorso STABILE
 ENISPACE_ORDINI_URL = (
     "https://enispace.eni.com/it_IT/private/gare_e_contratti/"
     "i_miei_contratti/i_miei_ordini_e_consuntivi/i_miei_ordini_e_consuntivi.page"
 )
-import re
-from urllib.parse import urlparse
-
-# Host Marketplace osservato (può essere ridistribuito da Eni; non usare come unica via)
 ENISPACE_MARKETPLACE_HOST = (
     "68cf6643-b34c-44da-84b6-e015090c680a.abap-web.eu10.hana.ondemand.com"
 )
@@ -31,12 +44,10 @@ ENISPACE_MARKETPLACE_URL = (
     f"https://{ENISPACE_MARKETPLACE_HOST}"
     "/ui#Launchpad-openFLPPage?pageId=Z_PG_MARKETPLACE&spaceId=Z_SP_MARKETPLACE"
 )
-# Dashboard filtri documenti Marketplace (passo dopo il Launchpad)
 ENISPACE_MARKETPLACE_DASHBOARD_HASH = "ZMP_DSH-DISPLAY&/"
 ENISPACE_MARKETPLACE_DASHBOARD_URL = (
     f"https://{ENISPACE_MARKETPLACE_HOST}/ui#{ENISPACE_MARKETPLACE_DASHBOARD_HASH}"
 )
-# Pattern host dinamici BTP/ABAP (UUID + abap-web)
 ENISPACE_MARKETPLACE_HOST_SUFFIX = ".abap-web.eu10.hana.ondemand.com"
 _MARKETPLACE_HOST_RE = re.compile(
     r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"
@@ -97,6 +108,18 @@ def brand_logo_ico() -> Path:
     return resource_path("assets", "vis_jarvis_logo.ico")
 
 
+def config_dir() -> Path:
+    path = project_root() / "config"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def module_config_dir(module_id: str) -> Path:
+    path = config_dir() / module_id
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def data_dir() -> Path:
     path = project_root() / "data"
     path.mkdir(parents=True, exist_ok=True)
@@ -109,8 +132,15 @@ def logs_dir() -> Path:
     return path
 
 
+def module_logs_dir(module_id: str) -> Path:
+    path = logs_dir() / "modules" / module_id
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def database_path() -> Path:
-    return data_dir() / "enispace.db"
+    """SQLite VIS•ION — indipendente da data/enispace.db del progetto legacy."""
+    return data_dir() / "vision.db"
 
 
 def browser_profile_dir() -> Path:
@@ -120,10 +150,9 @@ def browser_profile_dir() -> Path:
 
 
 def default_download_dir() -> Path:
-    """Cartella download predefinita: Documenti\\VIS eniSpace\\"""
+    """Cartella download predefinita: Documenti\\VIS-ION\\"""
     documents = Path.home() / "Documents"
     if not documents.is_dir():
-        # Fallback tipico su Windows localizzato
         documents = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Documents"
     path = documents / DOWNLOAD_FOLDER_NAME
     path.mkdir(parents=True, exist_ok=True)
@@ -153,7 +182,6 @@ def mda_day_folder_name(acquisition_module: str, day: str | None = None) -> str:
     if not day_s:
         day_s = date_cls.today().isoformat()
     else:
-        # Accetta già YYYY-MM-DD oppure normalizza prefisso data
         day_s = day_s[:10]
         if len(day_s) == 10 and day_s[4] == "-" and day_s[7] == "-":
             pass
