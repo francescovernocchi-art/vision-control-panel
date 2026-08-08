@@ -2,10 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowRight, PlusCircle } from "lucide-react";
 
 import { AppShell } from "@/components/vision/AppShell";
-import { StatusBadge } from "@/components/vision/StatusBadge";
 import { Button } from "@/components/ui/button";
-import { formatRelative } from "@/lib/vision";
-import { useJobs, useModules } from "@/lib/vision-data";
+import { useModules } from "@/lib/vision-data";
 
 export const Route = createFileRoute("/_authenticated/moduli/")({
   head: () => ({
@@ -36,13 +34,11 @@ const FUTURI = [
 
 function ModuliPage() {
   const { data: modules = [] } = useModules();
-  const { data: jobs = [] } = useJobs();
 
   return (
-    <AppShell title="Moduli" subtitle="Moduli operativi registrati sul Core">
+    <AppShell title="Moduli" subtitle="Catalogo moduli · stato live solo da GET_STATUS nelle pagine dedicate">
       <div className="grid gap-3 md:grid-cols-2">
         {modules.map((m: any) => {
-          const current = jobs.find((j: any) => j.id === m.current_job_id);
           const route = ROUTES[m.key];
           return (
             <div key={m.id} className="hud-panel space-y-3 p-4">
@@ -51,22 +47,18 @@ function ModuliPage() {
                   <p className="truncate font-semibold">{m.name}</p>
                   <p className="text-xs text-muted-foreground">{m.description}</p>
                 </div>
-                <StatusBadge status={m.status} />
+                <span className="rounded-md border border-border px-2 py-0.5 font-mono text-[0.65rem] text-muted-foreground">
+                  CATALOGO
+                </span>
               </div>
-              <dl className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <dt className="text-muted-foreground">Ultima attività</dt>
-                  <dd className="font-mono">{formatRelative(m.last_activity_at)}</dd>
-                </div>
-                <div className="min-w-0">
-                  <dt className="text-muted-foreground">Job corrente</dt>
-                  <dd className="truncate font-mono">{current?.code ?? "—"}</dd>
-                </div>
-              </dl>
+              <p className="text-[0.65rem] text-muted-foreground">
+                Lo stato operativo live non è derivato da questa riga catalogo. Apri il modulo o il
+                dettaglio dispositivo per GET_STATUS.
+              </p>
               {route ? (
                 <Button asChild size="sm" variant="secondary" className="w-full">
                   <Link to={route}>
-                    Apri modulo <ArrowRight className="size-4" />
+                    Apri modulo <ArrowRight className="size-4" aria-hidden />
                   </Link>
                 </Button>
               ) : (

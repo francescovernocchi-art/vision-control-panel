@@ -2,11 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   AGENT_TIMEOUT_MESSAGE,
+  agentQueueSizeDisplay,
   dataMode,
   derivedAgentStatus,
   isAgentOffline,
   isCloudConfigured,
   isRemoteCommandEnabled,
+  moduleLiveStatus,
   normalizeCommandRow,
   pickLatestGetStatusCommand,
   uniqueWarnings,
@@ -15,11 +17,30 @@ import {
   type GetStatusResult,
 } from "@/lib/vision-remote-status";
 
-describe("demo / cloud mode", () => {
-  it("reports DEMO when env missing", () => {
-    // Vitest runs without Vite env injection for these keys → DEMO
-    expect(isCloudConfigured() || dataMode() === "DEMO" || dataMode() === "CLOUD").toBe(true);
-    expect(["DEMO", "CLOUD"]).toContain(dataMode());
+describe("phase 3d agent observability helpers", () => {
+  it("queue size never falls back to demo counts", () => {
+    expect(agentQueueSizeDisplay(null)).toBe("—");
+    expect(agentQueueSizeDisplay({})).toBe("—");
+    expect(agentQueueSizeDisplay({ queue_size: 3 })).toBe(3);
+    expect(agentQueueSizeDisplay({ queue_size: 0 })).toBe(0);
+  });
+
+  it("module live status ignores seed status", () => {
+    expect(moduleLiveStatus(undefined, "ONLINE")).toBe("—");
+    expect(moduleLiveStatus(null, "RUNNING")).toBe("—");
+    expect(moduleLiveStatus({ status: "IDLE" }, "ONLINE")).toBe("IDLE");
+    expect(moduleLiveStatus({ health: "DEGRADED" }, "ONLINE")).toBe("DEGRADED");
+  });
+
+  it("offline derivation does not invent ONLINE", () => {
+    const now = Date.parse("2026-08-08T12:00:00Z");
+    expect(
+      derivedAgentStatus(
+        { last_seen_at: "2026-08-08T11:00:00Z", heartbeat_threshold_seconds: 60 },
+        { agent: { status: "ONLINE" } },
+        now,
+      ),
+    ).toBe("OFFLINE");
   });
 });
 

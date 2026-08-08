@@ -181,7 +181,7 @@
 }
 
 @utility pulse-dot {
-  animation: vision-pulse 1.8s ease-in-out infinite;
+  animation: vision-pulse 2.6s ease-in-out infinite;
 }
 
 @keyframes vision-scan {
@@ -194,5 +194,6 @@
 }
 
 @utility scanline {
-  animation: vision-scan 3.5s linear infinite;
+  animation: vision-scan 4.5s linear infinite;
+  opacity: 0.35;
 }

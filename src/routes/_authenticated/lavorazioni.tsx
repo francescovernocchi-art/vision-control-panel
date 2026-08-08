@@ -67,8 +67,12 @@ function JobsPage() {
     profiles.find((p: any) => p.id === id)?.full_name ?? "—";
 
   return (
-    <AppShell title="Lavorazioni" subtitle={`${filtered.length} risultati`}>
+    <AppShell title="Lavorazioni" subtitle={`${filtered.length} risultati · storico cloud`}>
       <div className="space-y-4">
+        <p className="rounded-lg border border-border/70 bg-card/30 px-3 py-2 text-xs text-muted-foreground">
+          Elenco storico su Supabase. Le righe con badge DEMO non influenzano health Agent,
+          online/offline, coda GET_STATUS, VISION Core o EniSpace runtime.
+        </p>
         <div className="hud-panel grid gap-2 p-3 sm:grid-cols-2 lg:grid-cols-4">
           <Select value={moduleId} onValueChange={setModuleId}>
             <SelectTrigger>
@@ -118,7 +122,14 @@ function JobsPage() {
               >
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{j.title}</p>
+                    <p className="truncate text-sm font-medium">
+                      {j.title}
+                      {j.is_demo ? (
+                        <span className="ml-2 inline-flex rounded border border-warning/40 bg-warning/10 px-1.5 py-0.5 font-mono text-[0.6rem] tracking-wide text-warning">
+                          DEMO
+                        </span>
+                      ) : null}
+                    </p>
                     <p className="truncate font-mono text-[0.65rem] text-muted-foreground">
                       {j.code} · {modules.find((m: any) => m.id === j.module_id)?.name ?? "—"}
                     </p>

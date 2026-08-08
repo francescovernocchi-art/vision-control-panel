@@ -83,6 +83,27 @@ export type GetStatusResult = {
   };
   partial?: boolean;
   missing_sections?: string[];
+  vision_core?: {
+    online?: boolean;
+    product?: string;
+    product_name?: string;
+    assistant?: string;
+    assistant_state?: string;
+    started_at?: string;
+    error?: string;
+  };
+  /** Phase 3D/3E — EniSpace runtime (additive, nullable fields) */
+  enispace_runtime?: {
+    status?: string;
+    available?: boolean;
+    active?: boolean | null;
+    pending_jobs?: number | null;
+    current_job?: Record<string, unknown> | null;
+    last_job?: Record<string, unknown> | null;
+    last_mail_check?: string | null;
+    last_error?: string | null;
+    detail_state?: string | null;
+  };
 };
 
 export type CommandStatus =
@@ -294,6 +315,27 @@ export function moduleFromResult(result: GetStatusResult | null | undefined, mod
 
 export function serviceFromResult(result: GetStatusResult | null | undefined, serviceId: string) {
   return result?.services?.find((s) => s.service_id === serviceId);
+}
+
+/** Agent queue size — never invent from demo job tables. */
+export function agentQueueSizeDisplay(
+  result: GetStatusResult | null | undefined,
+): number | "—" {
+  if (result?.queue_size != null && Number.isFinite(Number(result.queue_size))) {
+    return Number(result.queue_size);
+  }
+  return "—";
+}
+
+/**
+ * Live module status for Agent observability.
+ * Seed/localStorage module rows must not be painted as Agent status.
+ */
+export function moduleLiveStatus(
+  remote: { status?: string; health?: string } | null | undefined,
+  _seedStatus?: string,
+): string {
+  return remote?.status ?? remote?.health ?? "—";
 }
 
 export function isAgentOffline(

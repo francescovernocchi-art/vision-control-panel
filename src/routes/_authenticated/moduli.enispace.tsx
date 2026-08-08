@@ -1,29 +1,34 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { Mail, RefreshCw, History, ListOrdered } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/vision/AppShell";
 import { CommandButton } from "@/components/vision/CommandButton";
 import { StatusBadge } from "@/components/vision/StatusBadge";
-import { useRoles } from "@/hooks/useAuth";
+import { EniSpaceStatusCard, JobSummary } from "@/components/vision/StatusPanels";
 import {
-  formatDateTime,
-  formatRelative,
-  isDeviceOnline,
-  REMOTE_NOT_ENABLED_LABEL,
-} from "@/lib/vision";
-import { useDevices, useJobs, useModules } from "@/lib/vision-data";
-import { createGetStatusCommand, waitForGetStatusResult } from "@/lib/vision-remote-status";
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  OfflineState,
+  SectionCard,
+} from "@/components/vision/UiStates";
+import { useGetStatus } from "@/hooks/useGetStatus";
+import { useRoles } from "@/hooks/useAuth";
+import { REMOTE_NOT_ENABLED_LABEL } from "@/lib/vision";
+import { isCloudConfigured } from "@/lib/vision-remote-status";
+import { VISION_PRODUCT_NAME } from "@/lib/vision-status";
 
 export const Route = createFileRoute("/_authenticated/moduli/enispace")({
   head: () => ({
     meta: [
-      { title: "eniSpace Automation — VIS•ION" },
-      { name: "description", content: "Stato del modulo eniSpace Automation e comandi autorizzati." },
+      { title: `eniSpace — ${VISION_PRODUCT_NAME}` },
+      {
+        name: "description",
+        content: "Stato EniSpace da GET_STATUS enispace_runtime.",
+      },
       { name: "robots", content: "noindex, nofollow" },
-      { property: "og:title", content: "eniSpace Automation — VIS•ION" },
-      { property: "og:description", content: "Modulo eniSpace del sistema VIS•ION." },
     ],
   }),
   component: EnispacePage,
@@ -32,176 +37,126 @@ export const Route = createFileRoute("/_authenticated/moduli/enispace")({
 function EnispacePage() {
   const queryClient = useQueryClient();
   const { canOperate } = useRoles();
-  const { data: modules = [] } = useModules();
-  const { data: jobs = [] } = useJobs();
-  const { data: devices = [] } = useDevices();
+  const cloud = isCloudConfigured();
+  const {
+    device,
+    result,
+    refreshing,
+    error,
+    timeoutMessage,
+    agentStatus,
+    hasEverSynced,
+    refresh,
+  } = useGetStatus();
 
-  const module = modules.find((m: any) => m.key === "enispace");
-  const device = devices[0];
-  const agentOnline =
-    device && isDeviceOnline(device.last_seen_at, device.heartbeat_threshold_seconds ?? 120);
-  const moduleJobs = jobs.filter((j: any) => j.module_id === module?.id);
-  const current = moduleJobs.find((j: any) => j.id === module?.current_job_id) ?? moduleJobs[0];
-  const meta = (current?.metadata ?? {}) as Record<string, unknown>;
-
-  const remoteBlocked = REMOTE_NOT_ENABLED_LABEL;
   const statusDisabledReason = !canOperate
     ? "Il tuo ruolo non consente l'invio di comandi."
-    : !agentOnline
+    : agentStatus === "OFFLINE"
       ? `Impossibile inviare il comando: ${device?.code ?? "agent"} non è raggiungibile.`
-      : undefined;
+      : !cloud
+        ? "Cloud non configurato."
+        : undefined;
 
-  async function runGetStatus() {
-    try {
-      const cmd = await createGetStatusCommand(device?.code ?? "VIS-TARANTO-01");
-      const wait = await waitForGetStatusResult(cmd.id);
-      if (!wait.ok) {
-        toast.error(wait.reason === "timeout" ? wait.message : "GET_STATUS fallito", {
-          description: wait.message,
-        });
-      } else {
-        toast.success("Stato aggiornato", { description: device?.code });
-      }
-      void queryClient.invalidateQueries({ queryKey: ["commands"] });
-      void queryClient.invalidateQueries({ queryKey: ["devices"] });
-    } catch (e) {
-      toast.error("COMANDO FALLITO", {
-        description: `GET_STATUS: ${(e as Error).message}`,
-      });
-    }
-  }
+  const moduleRemote = result?.modules?.find((m) => m.module_id === "enispace");
 
   return (
-    <AppShell title="eniSpace Automation" subtitle="Modulo operativo — controllo mail, documenti, stampa">
+    <AppShell
+      title="eniSpace Automation"
+      subtitle={`${VISION_PRODUCT_NAME} — runtime reale da GET_STATUS`}
+    >
       <div className="space-y-4">
-        {!agentOnline && (
-          <div className="hud-panel border-destructive/40 p-4">
-            <p className="font-mono text-sm font-bold text-destructive">AGENT OFFLINE</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Non è possibile inviare comandi perché {device?.code ?? "l'agent"} non è
-              raggiungibile.
-            </p>
-          </div>
+        {!cloud && (
+          <ErrorState
+            title="Cloud non configurato"
+            description="Nessun dato demo. Configura Supabase env."
+          />
         )}
+        {agentStatus === "OFFLINE" ? <OfflineState /> : null}
+        {refreshing ? <LoadingState label="Aggiornamento GET_STATUS…" /> : null}
+        {timeoutMessage ? (
+          <ErrorState title="Timeout GET_STATUS" description={timeoutMessage} />
+        ) : null}
+        {error ? <ErrorState title="Errore" description={error} /> : null}
 
-        <div className="hud-panel space-y-3 p-4">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-            <div className="min-w-0">
-              <p className="hud-title">Stato modulo</p>
-              <p className="truncate text-sm">{module?.description ?? "—"}</p>
-            </div>
-            <StatusBadge status={module?.status ?? "OFFLINE"} />
+        <SectionCard
+          title="Stato modulo (GET_STATUS)"
+          actions={
+            <StatusBadge
+              status={moduleRemote?.status ?? moduleRemote?.health ?? "UNKNOWN"}
+            />
+          }
+        >
+          {!hasEverSynced && !result ? (
+            <EmptyState
+              title="Nessun GET_STATUS sincronizzato"
+              description="Premi «Stato agent» per caricare lo stato EniSpace reale."
+            />
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {moduleRemote?.display_name ?? "eniSpace"}
+              {moduleRemote?.version ? ` · v${moduleRemote.version}` : ""}
+            </p>
+          )}
+        </SectionCard>
+
+        <SectionCard title="EniSpace runtime">
+          <EniSpaceStatusCard runtime={result?.enispace_runtime ?? null} synced={Boolean(result)} />
+        </SectionCard>
+
+        <SectionCard title="Current activity" subtitle="Job EniSpace distinto dal Vision Core">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <JobSummary title="Vision Core job" job={result?.current_job ?? null} />
+            <JobSummary
+              title="EniSpace job"
+              job={result?.enispace_runtime?.current_job ?? null}
+            />
           </div>
-          <dl className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-            <div>
-              <dt className="text-muted-foreground">Ultimo controllo mail</dt>
-              <dd className="font-mono">{formatRelative(module?.last_activity_at)}</dd>
-            </div>
-            <div className="min-w-0">
-              <dt className="text-muted-foreground">Ultima lavorazione</dt>
-              <dd className="truncate font-mono">{moduleJobs[0]?.code ?? "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Mail rilevate</dt>
-              <dd className="font-mono">{String(meta["mail_rilevate"] ?? moduleJobs.length)}</dd>
-            </div>
-            <div className="min-w-0">
-              <dt className="text-muted-foreground">Ordine corrente</dt>
-              <dd className="truncate font-mono">{String(meta["ordine"] ?? current?.title ?? "—")}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Documenti trovati</dt>
-              <dd className="font-mono">{String(meta["documenti_trovati"] ?? "—")}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Documenti elaborati</dt>
-              <dd className="font-mono">{String(meta["documenti_elaborati"] ?? "—")}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Stato stampa</dt>
-              <dd className="font-mono">{String(meta["stato_stampa"] ?? "—")}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Aggiornato</dt>
-              <dd className="font-mono">{formatDateTime(module?.updated_at)}</dd>
-            </div>
-          </dl>
-        </div>
+        </SectionCard>
 
-        <div className="hud-panel space-y-3 p-4">
-          <p className="hud-title">Comandi autorizzati</p>
-          <p className="text-[0.65rem] text-muted-foreground">
-            Fase remota status_only — comandi operativi: {REMOTE_NOT_ENABLED_LABEL}.
+        <SectionCard title="Comandi">
+          <p className="mb-3 text-[0.65rem] text-muted-foreground">
+            Fase remota status_only — operazioni mail/retry: {REMOTE_NOT_ENABLED_LABEL}.
           </p>
           <div className="flex flex-wrap gap-2">
             <CommandButton
               label="Controlla ora le mail"
-              icon={<Mail className="size-4" />}
               disabled
-              disabledReason={remoteBlocked}
+              disabledReason={REMOTE_NOT_ENABLED_LABEL}
               onConfirm={async () => {
-                toast.error(remoteBlocked);
+                toast.error(REMOTE_NOT_ENABLED_LABEL);
               }}
             />
             <CommandButton
               label="Riprova ultimo job"
               sensitive
-              icon={<RefreshCw className="size-4" />}
               disabled
-              disabledReason={remoteBlocked}
-              description={`Verrà richiesto al Core di rieseguire ${current?.code ?? "l'ultimo job"}.`}
+              disabledReason={REMOTE_NOT_ENABLED_LABEL}
               onConfirm={async () => {
-                toast.error(remoteBlocked);
+                toast.error(REMOTE_NOT_ENABLED_LABEL);
               }}
             />
             <CommandButton
               label="Stato agent"
-              disabled={!!statusDisabledReason}
+              icon={<RefreshCw className="size-4" />}
+              disabled={!!statusDisabledReason || refreshing}
               disabledReason={statusDisabledReason}
-              onConfirm={() => runGetStatus()}
+              onConfirm={async () => {
+                await refresh();
+                void queryClient.invalidateQueries({ queryKey: ["commands"] });
+                void queryClient.invalidateQueries({ queryKey: ["devices"] });
+              }}
             />
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="mt-3">
             <Link
-              to="/lavorazioni"
-              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs hover:border-accent/50"
+              to="/dispositivi/$code"
+              params={{ code: device?.code ?? "VIS-TARANTO-01" }}
+              className="text-xs text-accent hover:underline"
             >
-              <ListOrdered className="size-4" /> Apri coda
-            </Link>
-            <Link
-              to="/lavorazioni"
-              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs hover:border-accent/50"
-            >
-              <History className="size-4" /> Apri storico
+              Apri dettaglio dispositivo
             </Link>
           </div>
-        </div>
-
-        <div className="hud-panel p-4">
-          <p className="hud-title">Storico recente</p>
-          <ul className="mt-2 space-y-2">
-            {moduleJobs.slice(0, 8).map((j: any) => (
-              <li key={j.id}>
-                <Link
-                  to="/jobs/$id"
-                  params={{ id: j.id }}
-                  className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 hover:border-accent/50"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm">{j.title}</p>
-                    <p className="font-mono text-[0.65rem] text-muted-foreground">
-                      {j.code} · {formatRelative(j.created_at)}
-                    </p>
-                  </div>
-                  <StatusBadge status={j.status} />
-                </Link>
-              </li>
-            ))}
-            {moduleJobs.length === 0 && (
-              <li className="text-xs text-muted-foreground">Nessuna lavorazione registrata.</li>
-            )}
-          </ul>
-        </div>
+        </SectionCard>
       </div>
     </AppShell>
   );

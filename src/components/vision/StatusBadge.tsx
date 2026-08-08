@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { STATUS_TONE, toneClasses, type Tone } from "@/lib/vision";
+import { statusLabel } from "@/lib/vision-status";
 
 export function StatusDot({
   status,
@@ -23,6 +24,7 @@ export function StatusDot({
             : "bg-muted-foreground";
   return (
     <span
+      aria-hidden
       className={cn(
         "inline-block size-2.5 shrink-0 rounded-full",
         color,
@@ -43,8 +45,12 @@ export function StatusBadge({
   className?: string;
 }) {
   const resolved: Tone = tone ?? STATUS_TONE[status] ?? "muted";
+  const label = statusLabel(status);
   return (
     <span
+      role="status"
+      aria-label={label}
+      title={label}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-[0.65rem] tracking-widest uppercase",
         toneClasses(resolved),
@@ -52,7 +58,7 @@ export function StatusBadge({
       )}
     >
       <StatusDot status={status} pulse={false} className="size-1.5" />
-      {status}
+      <span>{status}</span>
     </span>
   );
 }

@@ -110,11 +110,16 @@ export const JOB_STATUS_TONE: Record<string, Tone> = {
 
 export const STATUS_TONE: Record<string, Tone> = {
   ONLINE: "success",
+  IDLE: "success",
   DEGRADED: "warning",
   OFFLINE: "danger",
   DISABLED: "muted",
   PAUSED: "warning",
   ERROR: "danger",
+  PROCESSING: "info",
+  UNKNOWN: "muted",
+  UNAVAILABLE: "muted",
+  PARTIAL: "warning",
   PENDING: "warning",
   APPROVED: "success",
   REJECTED: "danger",
@@ -176,7 +181,9 @@ export function isDeviceOnline(
 
 export function formatDateTime(value?: string | null): string {
   if (!value) return "—";
-  return new Date(value).toLocaleString("it-IT", {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("it-IT", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -187,7 +194,9 @@ export function formatDateTime(value?: string | null): string {
 
 export function formatTime(value?: string | null): string {
   if (!value) return "—";
-  return new Date(value).toLocaleTimeString("it-IT", {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleTimeString("it-IT", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -196,7 +205,10 @@ export function formatTime(value?: string | null): string {
 
 export function formatRelative(value?: string | null): string {
   if (!value) return "mai";
-  const diff = Math.round((Date.now() - new Date(value).getTime()) / 1000);
+  const ts = new Date(value).getTime();
+  if (Number.isNaN(ts)) return "—";
+  const diff = Math.round((Date.now() - ts) / 1000);
+  if (diff < 0) return "ora";
   if (diff < 60) return `${diff}s fa`;
   if (diff < 3600) return `${Math.round(diff / 60)} min fa`;
   if (diff < 86400) return `${Math.round(diff / 3600)} h fa`;

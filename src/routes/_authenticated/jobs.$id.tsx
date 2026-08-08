@@ -57,15 +57,30 @@ function JobDetail() {
   const device = devices.find((d: any) => d.id === job.device_id);
 
   return (
-    <AppShell title={job.code} subtitle={job.title}>
+    <AppShell
+      title={job.code}
+      subtitle={job.is_demo ? `${job.title} · DEMO` : job.title}
+    >
       <div className="space-y-4">
+        {job.is_demo ? (
+          <p className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+            Record DEMO — non rappresenta lo stato live di VISION Agent / EniSpace.
+          </p>
+        ) : null}
         <div className="hud-panel space-y-3 p-4">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
             <div className="min-w-0">
               <p className="hud-title">Stato</p>
               <p className="truncate font-mono text-lg">{job.current_step ?? "—"}</p>
             </div>
-            <StatusBadge status={job.status} />
+            <div className="flex flex-col items-end gap-1">
+              {job.is_demo ? (
+                <span className="rounded border border-warning/40 bg-warning/10 px-1.5 py-0.5 font-mono text-[0.6rem] text-warning">
+                  DEMO
+                </span>
+              ) : null}
+              <StatusBadge status={job.status} />
+            </div>
           </div>
           <Progress value={job.progress ?? 0} />
           <dl className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">

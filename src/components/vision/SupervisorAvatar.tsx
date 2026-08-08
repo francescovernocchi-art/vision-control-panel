@@ -16,7 +16,7 @@ const STATE_RING: Record<SupervisorState, string> = {
 };
 
 /**
- * Placeholder avatar. The ring/scanline reacts to the supervisor state so a
+ * Decorative avatar. The ring/scanline reacts to the supervisor state so a
  * future animated asset can be swapped in without touching call sites.
  */
 export function SupervisorAvatar({
@@ -38,11 +38,11 @@ export function SupervisorAvatar({
         className,
       )}
       style={{ width: size, height: size }}
-      aria-label={`VIS•ION Supervisor — ${SUPERVISOR_LABEL[state]}`}
+      aria-label={`VISION Supervisor — ${SUPERVISOR_LABEL[state]}`}
     >
       <img
         src={avatar}
-        alt="Avatar VIS•ION Supervisor"
+        alt="Avatar VISION Supervisor"
         width={size}
         height={size}
         loading="lazy"

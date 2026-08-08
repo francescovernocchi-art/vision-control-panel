@@ -24,6 +24,7 @@ import { Route as AuthenticatedNotificheRouteImport } from './routes/_authentica
 import { Route as AuthenticatedProfiloRouteImport } from './routes/_authenticated/profilo'
 import { Route as AuthenticatedSetupRouteImport } from './routes/_authenticated/setup'
 import { Route as AuthenticatedSupervisorRouteImport } from './routes/_authenticated/supervisor'
+import { Route as AuthenticatedDispositiviCodeRouteImport } from './routes/_authenticated/dispositivi.$code'
 import { Route as AuthenticatedJobsIdRouteImport } from './routes/_authenticated/jobs.$id'
 import { Route as AuthenticatedModuliIndexRouteImport } from './routes/_authenticated/moduli.index'
 import { Route as AuthenticatedModuliEnispaceRouteImport } from './routes/_authenticated/moduli.enispace'
@@ -107,6 +108,12 @@ const AuthenticatedSupervisorRoute = AuthenticatedSupervisorRouteImport.update({
   path: '/supervisor',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedDispositiviCodeRoute =
+  AuthenticatedDispositiviCodeRouteImport.update({
+    id: '/$code',
+    path: '/$code',
+    getParentRoute: () => AuthenticatedDispositiviRoute,
+  } as any)
 const AuthenticatedJobsIdRoute = AuthenticatedJobsIdRouteImport.update({
   id: '/jobs/$id',
   path: '/jobs/$id',
@@ -138,7 +145,7 @@ export interface FileRoutesByFullPath {
   '/approvazioni': typeof AuthenticatedApprovazioniRoute
   '/audit': typeof AuthenticatedAuditRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
-  '/dispositivi': typeof AuthenticatedDispositiviRoute
+  '/dispositivi': typeof AuthenticatedDispositiviRouteWithChildren
   '/impostazioni': typeof AuthenticatedImpostazioniRoute
   '/lavorazioni': typeof AuthenticatedLavorazioniRoute
   '/moduli': typeof AuthenticatedModuliRouteWithChildren
@@ -146,6 +153,7 @@ export interface FileRoutesByFullPath {
   '/profilo': typeof AuthenticatedProfiloRoute
   '/setup': typeof AuthenticatedSetupRoute
   '/supervisor': typeof AuthenticatedSupervisorRoute
+  '/dispositivi/$code': typeof AuthenticatedDispositiviCodeRoute
   '/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/moduli/enispace': typeof AuthenticatedModuliEnispaceRoute
   '/moduli/trasporto-monete': typeof AuthenticatedModuliTrasportoMoneteRoute
@@ -158,13 +166,14 @@ export interface FileRoutesByTo {
   '/approvazioni': typeof AuthenticatedApprovazioniRoute
   '/audit': typeof AuthenticatedAuditRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
-  '/dispositivi': typeof AuthenticatedDispositiviRoute
+  '/dispositivi': typeof AuthenticatedDispositiviRouteWithChildren
   '/impostazioni': typeof AuthenticatedImpostazioniRoute
   '/lavorazioni': typeof AuthenticatedLavorazioniRoute
   '/notifiche': typeof AuthenticatedNotificheRoute
   '/profilo': typeof AuthenticatedProfiloRoute
   '/setup': typeof AuthenticatedSetupRoute
   '/supervisor': typeof AuthenticatedSupervisorRoute
+  '/dispositivi/$code': typeof AuthenticatedDispositiviCodeRoute
   '/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/moduli/enispace': typeof AuthenticatedModuliEnispaceRoute
   '/moduli/trasporto-monete': typeof AuthenticatedModuliTrasportoMoneteRoute
@@ -179,7 +188,7 @@ export interface FileRoutesById {
   '/_authenticated/approvazioni': typeof AuthenticatedApprovazioniRoute
   '/_authenticated/audit': typeof AuthenticatedAuditRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
-  '/_authenticated/dispositivi': typeof AuthenticatedDispositiviRoute
+  '/_authenticated/dispositivi': typeof AuthenticatedDispositiviRouteWithChildren
   '/_authenticated/impostazioni': typeof AuthenticatedImpostazioniRoute
   '/_authenticated/lavorazioni': typeof AuthenticatedLavorazioniRoute
   '/_authenticated/moduli': typeof AuthenticatedModuliRouteWithChildren
@@ -187,6 +196,7 @@ export interface FileRoutesById {
   '/_authenticated/profilo': typeof AuthenticatedProfiloRoute
   '/_authenticated/setup': typeof AuthenticatedSetupRoute
   '/_authenticated/supervisor': typeof AuthenticatedSupervisorRoute
+  '/_authenticated/dispositivi/$code': typeof AuthenticatedDispositiviCodeRoute
   '/_authenticated/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/_authenticated/moduli/enispace': typeof AuthenticatedModuliEnispaceRoute
   '/_authenticated/moduli/trasporto-monete': typeof AuthenticatedModuliTrasportoMoneteRoute
@@ -209,6 +219,7 @@ export interface FileRouteTypes {
     | '/profilo'
     | '/setup'
     | '/supervisor'
+    | '/dispositivi/$code'
     | '/jobs/$id'
     | '/moduli/enispace'
     | '/moduli/trasporto-monete'
@@ -228,6 +239,7 @@ export interface FileRouteTypes {
     | '/profilo'
     | '/setup'
     | '/supervisor'
+    | '/dispositivi/$code'
     | '/jobs/$id'
     | '/moduli/enispace'
     | '/moduli/trasporto-monete'
@@ -249,6 +261,7 @@ export interface FileRouteTypes {
     | '/_authenticated/profilo'
     | '/_authenticated/setup'
     | '/_authenticated/supervisor'
+    | '/_authenticated/dispositivi/$code'
     | '/_authenticated/jobs/$id'
     | '/_authenticated/moduli/enispace'
     | '/_authenticated/moduli/trasporto-monete'
@@ -369,6 +382,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSupervisorRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/dispositivi/$code': {
+      id: '/_authenticated/dispositivi/$code'
+      path: '/$code'
+      fullPath: '/dispositivi/$code'
+      preLoaderRoute: typeof AuthenticatedDispositiviCodeRouteImport
+      parentRoute: typeof AuthenticatedDispositiviRoute
+    }
     '/_authenticated/jobs/$id': {
       id: '/_authenticated/jobs/$id'
       path: '/jobs/$id'
@@ -400,6 +420,20 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AuthenticatedDispositiviRouteChildren {
+  AuthenticatedDispositiviCodeRoute: typeof AuthenticatedDispositiviCodeRoute
+}
+
+const AuthenticatedDispositiviRouteChildren: AuthenticatedDispositiviRouteChildren =
+  {
+    AuthenticatedDispositiviCodeRoute: AuthenticatedDispositiviCodeRoute,
+  }
+
+const AuthenticatedDispositiviRouteWithChildren =
+  AuthenticatedDispositiviRoute._addFileChildren(
+    AuthenticatedDispositiviRouteChildren,
+  )
+
 interface AuthenticatedModuliRouteChildren {
   AuthenticatedModuliEnispaceRoute: typeof AuthenticatedModuliEnispaceRoute
   AuthenticatedModuliTrasportoMoneteRoute: typeof AuthenticatedModuliTrasportoMoneteRoute
@@ -420,7 +454,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedApprovazioniRoute: typeof AuthenticatedApprovazioniRoute
   AuthenticatedAuditRoute: typeof AuthenticatedAuditRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
-  AuthenticatedDispositiviRoute: typeof AuthenticatedDispositiviRoute
+  AuthenticatedDispositiviRoute: typeof AuthenticatedDispositiviRouteWithChildren
   AuthenticatedImpostazioniRoute: typeof AuthenticatedImpostazioniRoute
   AuthenticatedLavorazioniRoute: typeof AuthenticatedLavorazioniRoute
   AuthenticatedModuliRoute: typeof AuthenticatedModuliRouteWithChildren
@@ -435,7 +469,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedApprovazioniRoute: AuthenticatedApprovazioniRoute,
   AuthenticatedAuditRoute: AuthenticatedAuditRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
-  AuthenticatedDispositiviRoute: AuthenticatedDispositiviRoute,
+  AuthenticatedDispositiviRoute: AuthenticatedDispositiviRouteWithChildren,
   AuthenticatedImpostazioniRoute: AuthenticatedImpostazioniRoute,
   AuthenticatedLavorazioniRoute: AuthenticatedLavorazioniRoute,
   AuthenticatedModuliRoute: AuthenticatedModuliRouteWithChildren,

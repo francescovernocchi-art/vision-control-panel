@@ -3,7 +3,6 @@ import {
   Activity,
   BellRing,
   BadgeCheck,
-  Bot,
   Cpu,
   Download,
   LayoutDashboard,
@@ -34,7 +33,7 @@ import { isDeviceOnline } from "@/lib/vision";
 
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/supervisor", label: "Supervisor", icon: Bot },
+  { to: "/supervisor", label: "Attività", icon: Activity },
   { to: "/moduli", label: "Moduli", icon: Cpu },
   { to: "/lavorazioni", label: "Lavorazioni", icon: ListChecks },
   { to: "/notifiche", label: "Notifiche", icon: BellRing },

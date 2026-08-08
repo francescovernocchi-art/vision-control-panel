@@ -79,7 +79,7 @@ export function useGetStatus(deviceId: string = DEFAULT_DEVICE_ID) {
 
   const refresh = useCallback(async () => {
     if (!cloudConfigured) {
-      setError("DEMO / NON COLLEGATO — configura VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY");
+      setError("Cloud non configurato — nessun dato demo. Imposta VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.");
       return;
     }
     setRefreshing(true);
