@@ -77,8 +77,20 @@ function ApprovazioniPage() {
       <div className="space-y-3">
         {approvals.map((a: any) => {
           const province = ((a.metadata ?? {})["province"] as string[] | undefined) ?? [];
+          const moduleName =
+            modules.find((m: any) => m.id === a.module_id)?.name ?? "Sistema";
+          const job = jobs.find((j: any) => j.id === a.job_id);
+          const details = [
+            { label: "Modulo", value: moduleName },
+            { label: "Richiesta", value: a.title ?? "—" },
+            { label: "Dettaglio", value: a.description ?? "—" },
+            { label: "Lavorazione", value: job?.code ?? "—" },
+            { label: "Province", value: province.join(" / ") || "—" },
+            { label: "Richiesta il", value: formatDateTime(a.requested_at) },
+          ];
           return (
             <div key={a.id} className="hud-panel space-y-3 p-4">
+
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                 <div className="min-w-0">
                   <p className="hud-title">
@@ -122,7 +134,10 @@ function ApprovazioniPage() {
                       icon={<Check className="size-4" />}
                       disabled={!canOperate}
                       disabledReason="Il tuo ruolo è in sola consultazione."
-                      description="Operazione sensibile: confermi l'approvazione? La PEC non verrà inviata automaticamente."
+                      description="Operazione sensibile e irreversibile: verrà inviato il comando APPROVE_JOB al VIS•ION Core. La PEC non verrà inviata automaticamente."
+                      details={details}
+                      confirmKeyword="APPROVA"
+                      confirmLabel="Approva definitivamente"
                       onConfirm={() => decide(a, "APPROVED")}
                     />
                     <CommandButton
@@ -132,19 +147,27 @@ function ApprovazioniPage() {
                       icon={<PenLine className="size-4" />}
                       disabled={!canOperate}
                       disabledReason="Il tuo ruolo è in sola consultazione."
+                      description="La richiesta tornerà all'operatore con esito 'modifiche richieste' e verrà inviato il comando REJECT_JOB."
+                      details={details}
+                      confirmLabel="Richiedi modifica"
                       onConfirm={() => decide(a, "CHANGES_REQUESTED")}
                     />
                     <CommandButton
-                      label="Annulla"
+                      label="Rifiuta"
                       variant="destructive"
                       sensitive
                       icon={<X className="size-4" />}
                       disabled={!canOperate}
                       disabledReason="Il tuo ruolo è in sola consultazione."
+                      description="Operazione sensibile e irreversibile: la richiesta verrà annullata e non sarà più lavorabile."
+                      details={details}
+                      confirmKeyword="RIFIUTA"
+                      confirmLabel="Rifiuta definitivamente"
                       onConfirm={() => decide(a, "CANCELLED")}
                     />
                   </>
                 )}
+
               </div>
             </div>
           );
