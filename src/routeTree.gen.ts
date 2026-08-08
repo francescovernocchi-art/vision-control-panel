@@ -13,9 +13,13 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as AuthenticatedApprovazioniRouteImport } from './routes/_authenticated/approvazioni'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedLavorazioniRouteImport } from './routes/_authenticated/lavorazioni'
 import { Route as AuthenticatedModuliRouteImport } from './routes/_authenticated/moduli'
+import { Route as AuthenticatedNotificheRouteImport } from './routes/_authenticated/notifiche'
 import { Route as AuthenticatedSupervisorRouteImport } from './routes/_authenticated/supervisor'
+import { Route as AuthenticatedJobsIdRouteImport } from './routes/_authenticated/jobs.$id'
 import { Route as AuthenticatedModuliIndexRouteImport } from './routes/_authenticated/moduli.index'
 import { Route as AuthenticatedModuliEnispaceRouteImport } from './routes/_authenticated/moduli.enispace'
 import { Route as AuthenticatedModuliTrasportoMoneteRouteImport } from './routes/_authenticated/moduli.trasporto-monete'
@@ -39,19 +43,41 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
   path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedApprovazioniRoute =
+  AuthenticatedApprovazioniRouteImport.update({
+    id: '/approvazioni',
+    path: '/approvazioni',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedLavorazioniRoute =
+  AuthenticatedLavorazioniRouteImport.update({
+    id: '/lavorazioni',
+    path: '/lavorazioni',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedModuliRoute = AuthenticatedModuliRouteImport.update({
   id: '/moduli',
   path: '/moduli',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedNotificheRoute = AuthenticatedNotificheRouteImport.update({
+  id: '/notifiche',
+  path: '/notifiche',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedSupervisorRoute = AuthenticatedSupervisorRouteImport.update({
   id: '/supervisor',
   path: '/supervisor',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedJobsIdRoute = AuthenticatedJobsIdRouteImport.update({
+  id: '/jobs/$id',
+  path: '/jobs/$id',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedModuliIndexRoute =
@@ -77,9 +103,13 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/approvazioni': typeof AuthenticatedApprovazioniRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/lavorazioni': typeof AuthenticatedLavorazioniRoute
   '/moduli': typeof AuthenticatedModuliRouteWithChildren
+  '/notifiche': typeof AuthenticatedNotificheRoute
   '/supervisor': typeof AuthenticatedSupervisorRoute
+  '/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/moduli/enispace': typeof AuthenticatedModuliEnispaceRoute
   '/moduli/trasporto-monete': typeof AuthenticatedModuliTrasportoMoneteRoute
   '/moduli/': typeof AuthenticatedModuliIndexRoute
@@ -88,8 +118,12 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/approvazioni': typeof AuthenticatedApprovazioniRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/lavorazioni': typeof AuthenticatedLavorazioniRoute
+  '/notifiche': typeof AuthenticatedNotificheRoute
   '/supervisor': typeof AuthenticatedSupervisorRoute
+  '/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/moduli/enispace': typeof AuthenticatedModuliEnispaceRoute
   '/moduli/trasporto-monete': typeof AuthenticatedModuliTrasportoMoneteRoute
   '/moduli': typeof AuthenticatedModuliIndexRoute
@@ -100,9 +134,13 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/_authenticated/approvazioni': typeof AuthenticatedApprovazioniRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/lavorazioni': typeof AuthenticatedLavorazioniRoute
   '/_authenticated/moduli': typeof AuthenticatedModuliRouteWithChildren
+  '/_authenticated/notifiche': typeof AuthenticatedNotificheRoute
   '/_authenticated/supervisor': typeof AuthenticatedSupervisorRoute
+  '/_authenticated/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/_authenticated/moduli/enispace': typeof AuthenticatedModuliEnispaceRoute
   '/_authenticated/moduli/trasporto-monete': typeof AuthenticatedModuliTrasportoMoneteRoute
   '/_authenticated/moduli/': typeof AuthenticatedModuliIndexRoute
@@ -113,9 +151,13 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/reset-password'
+    | '/approvazioni'
     | '/dashboard'
+    | '/lavorazioni'
     | '/moduli'
+    | '/notifiche'
     | '/supervisor'
+    | '/jobs/$id'
     | '/moduli/enispace'
     | '/moduli/trasporto-monete'
     | '/moduli/'
@@ -124,8 +166,12 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/reset-password'
+    | '/approvazioni'
     | '/dashboard'
+    | '/lavorazioni'
+    | '/notifiche'
     | '/supervisor'
+    | '/jobs/$id'
     | '/moduli/enispace'
     | '/moduli/trasporto-monete'
     | '/moduli'
@@ -135,9 +181,13 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/reset-password'
+    | '/_authenticated/approvazioni'
     | '/_authenticated/dashboard'
+    | '/_authenticated/lavorazioni'
     | '/_authenticated/moduli'
+    | '/_authenticated/notifiche'
     | '/_authenticated/supervisor'
+    | '/_authenticated/jobs/$id'
     | '/_authenticated/moduli/enispace'
     | '/_authenticated/moduli/trasporto-monete'
     | '/_authenticated/moduli/'
@@ -180,11 +230,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/approvazioni': {
+      id: '/_authenticated/approvazioni'
+      path: '/approvazioni'
+      fullPath: '/approvazioni'
+      preLoaderRoute: typeof AuthenticatedApprovazioniRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/lavorazioni': {
+      id: '/_authenticated/lavorazioni'
+      path: '/lavorazioni'
+      fullPath: '/lavorazioni'
+      preLoaderRoute: typeof AuthenticatedLavorazioniRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/moduli': {
@@ -194,11 +258,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedModuliRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/notifiche': {
+      id: '/_authenticated/notifiche'
+      path: '/notifiche'
+      fullPath: '/notifiche'
+      preLoaderRoute: typeof AuthenticatedNotificheRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/supervisor': {
       id: '/_authenticated/supervisor'
       path: '/supervisor'
       fullPath: '/supervisor'
       preLoaderRoute: typeof AuthenticatedSupervisorRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/jobs/$id': {
+      id: '/_authenticated/jobs/$id'
+      path: '/jobs/$id'
+      fullPath: '/jobs/$id'
+      preLoaderRoute: typeof AuthenticatedJobsIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/moduli/': {
@@ -242,15 +320,23 @@ const AuthenticatedModuliRouteWithChildren =
   AuthenticatedModuliRoute._addFileChildren(AuthenticatedModuliRouteChildren)
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedApprovazioniRoute: typeof AuthenticatedApprovazioniRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedLavorazioniRoute: typeof AuthenticatedLavorazioniRoute
   AuthenticatedModuliRoute: typeof AuthenticatedModuliRouteWithChildren
+  AuthenticatedNotificheRoute: typeof AuthenticatedNotificheRoute
   AuthenticatedSupervisorRoute: typeof AuthenticatedSupervisorRoute
+  AuthenticatedJobsIdRoute: typeof AuthenticatedJobsIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedApprovazioniRoute: AuthenticatedApprovazioniRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedLavorazioniRoute: AuthenticatedLavorazioniRoute,
   AuthenticatedModuliRoute: AuthenticatedModuliRouteWithChildren,
+  AuthenticatedNotificheRoute: AuthenticatedNotificheRoute,
   AuthenticatedSupervisorRoute: AuthenticatedSupervisorRoute,
+  AuthenticatedJobsIdRoute: AuthenticatedJobsIdRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
