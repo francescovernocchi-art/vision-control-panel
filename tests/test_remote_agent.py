@@ -61,12 +61,14 @@ def test_get_status_command(agent, mock_backend):
     out = agent.handle_command(cmd)
     assert out.status == CommandStatus.COMPLETED
     assert out.result.get("ok") is True
+    assert out.result.get("api_version") == "v1"
     assert "vision_core" in out.result
     assert out.result["vision_core"]["online"] is True
     assert any(e["event_type"] == "COMMAND_COMPLETED" for e in mock_backend.events)
 
 
-def test_check_enispace_mail_dry_run(agent):
+def test_check_enispace_mail_rejected_status_only(agent):
+    """Policy status_only: comandi operativi remoti REJECTED (locale eniSpace invariato)."""
     cmd = RemoteCommand.create(
         command_type=CommandType.CHECK_ENISPACE_MAIL,
         target_device_id="VIS-TARANTO-01",
@@ -74,9 +76,8 @@ def test_check_enispace_mail_dry_run(agent):
         source="test",
     )
     out = agent.handle_command(cmd)
-    assert out.status == CommandStatus.COMPLETED
-    assert out.result.get("ok") is True
-    assert out.result.get("dry_run") is True
+    assert out.status == CommandStatus.REJECTED
+    assert out.result.get("code") == "REMOTE_OPERATION_NOT_ENABLED"
 
 
 def test_idempotency_no_double_exec(agent):
@@ -113,7 +114,7 @@ def test_reject_non_whitelist(agent):
     assert out.status == CommandStatus.REJECTED
 
 
-def test_approve_job_not_implemented(agent):
+def test_approve_job_rejected_status_only(agent):
     cmd = RemoteCommand.create(
         command_type=CommandType.APPROVE_JOB,
         target_device_id="VIS-TARANTO-01",
@@ -121,8 +122,8 @@ def test_approve_job_not_implemented(agent):
         source="test",
     )
     out = agent.handle_command(cmd)
-    assert out.status == CommandStatus.COMPLETED
-    assert out.result.get("code") == "NOT_IMPLEMENTED"
+    assert out.status == CommandStatus.REJECTED
+    assert out.result.get("code") == "REMOTE_OPERATION_NOT_ENABLED"
 
 
 def test_validator_expired():
@@ -153,3 +154,5 @@ def test_heartbeat_mock(agent, mock_backend):
     hb = mock_backend.heartbeats[-1]
     assert hb["device_id"] == "VIS-TARANTO-01"
     assert "modules" in hb
+    assert "platform_version" in hb
+    assert "timestamp" in hb

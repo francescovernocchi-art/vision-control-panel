@@ -18,7 +18,7 @@ class PlatformContext:
     services: ServiceRegistry
     skills: SkillRegistry = field(default_factory=SkillRegistry)
     version: str = "2.0-vision"
-    platform_version: str = "0.4.0-supervisor-readonly"
+    platform_version: str = "0.5.0-remote-readonly"
     config: dict[str, Any] = field(default_factory=dict)
     core: Any = None
     health_bridge: Any = None

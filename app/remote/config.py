@@ -56,6 +56,8 @@ class RemoteConfig:
     command_poll_seconds: int = 3
     agent_version: str = "0.1.0"
     vision_version: str = "2.0-vision"
+    # status_only | full — solo comandi dal Remote Agent (non UI/JARVIS locale)
+    remote_execution_policy: str = "status_only"
 
     @classmethod
     def load(cls, env_path: Optional[Path] = None) -> "RemoteConfig":
@@ -66,6 +68,12 @@ class RemoteConfig:
         mode = (os.environ.get("VISION_REMOTE_MODE") or "mock").strip().lower()
         if mode not in ("mock", "supabase"):
             mode = "mock"
+
+        policy = (
+            os.environ.get("VISION_REMOTE_EXECUTION_POLICY") or "status_only"
+        ).strip().lower()
+        if policy not in ("status_only", "full"):
+            policy = "status_only"
 
         return cls(
             enabled=_bool(os.environ.get("VISION_REMOTE_ENABLED"), False),
@@ -85,6 +93,7 @@ class RemoteConfig:
             ),
             agent_version=(os.environ.get("VISION_AGENT_VERSION") or "0.1.0").strip(),
             vision_version=(os.environ.get("VISION_VERSION") or "2.0-vision").strip(),
+            remote_execution_policy=policy,
         )
 
     def redacted_dict(self) -> dict:
@@ -100,4 +109,5 @@ class RemoteConfig:
             "command_poll_seconds": self.command_poll_seconds,
             "agent_version": self.agent_version,
             "vision_version": self.vision_version,
+            "remote_execution_policy": self.remote_execution_policy,
         }

@@ -56,6 +56,22 @@ STUB_COMMANDS: frozenset[str] = frozenset(
     }
 )
 
+# Policy di fase: solo GET_STATUS remoto autorizzato (non blocca path locali)
+REMOTE_EXECUTION_POLICY_STATUS_ONLY = "status_only"
+REMOTE_EXECUTION_POLICY_FULL = "full"
+DEFAULT_REMOTE_EXECUTION_POLICY = REMOTE_EXECUTION_POLICY_STATUS_ONLY
+
+REMOTE_STATUS_ONLY_ALLOWED: frozenset[str] = frozenset({CommandType.GET_STATUS})
+
+
+def is_remote_command_allowed(command_type: str, *, policy: str) -> bool:
+    """True se il comando remoto è consentito dalla policy di fase."""
+    pol = (policy or DEFAULT_REMOTE_EXECUTION_POLICY).strip().lower()
+    if pol == REMOTE_EXECUTION_POLICY_FULL:
+        return True
+    # status_only (default)
+    return str(command_type) in REMOTE_STATUS_ONLY_ALLOWED
+
 
 def now_iso() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -127,18 +143,35 @@ class DeviceIdentity:
     last_seen_at: str = ""
     current_job_id: str = ""
     modules: list[dict[str, Any]] = field(default_factory=list)
+    platform_version: str = ""
 
     def to_heartbeat(self) -> dict[str, Any]:
+        """Heartbeat leggero — non full GET_STATUS."""
+        modules_summary = []
+        for m in self.modules or []:
+            if not isinstance(m, dict):
+                continue
+            modules_summary.append(
+                {
+                    "module_id": m.get("module_id") or m.get("id") or "",
+                    "status": m.get("status") or m.get("health") or "",
+                    "health": m.get("health") or m.get("status") or "",
+                }
+            )
+        ts = self.last_seen_at or now_iso()
         return {
             "device_id": self.device_id,
-            "device_name": self.device_name,
+            "status": self.status,
             "agent_version": self.agent_version,
             "vision_version": self.vision_version,
-            "hostname": self.hostname,
-            "status": self.status,
-            "last_seen_at": self.last_seen_at or now_iso(),
+            "platform_version": self.platform_version or "",
             "current_job_id": self.current_job_id or "",
-            "modules": list(self.modules),
+            "modules": modules_summary,
+            "timestamp": ts,
+            # campi legacy compat backend mock
+            "device_name": self.device_name,
+            "hostname": self.hostname,
+            "last_seen_at": ts,
         }
 
 

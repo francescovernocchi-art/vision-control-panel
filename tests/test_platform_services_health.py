@@ -137,7 +137,7 @@ def test_missing_service_fallback():
         health=HealthRegistry(),
         services=services,
         skills=SkillRegistry(),
-        platform_version="0.4.0-supervisor-readonly",
+        platform_version="0.5.0-remote-readonly",
     )
     assert ctx.get_service("missing_svc") is None
     result = run_platform_diagnostics(ctx)
@@ -148,14 +148,14 @@ def test_missing_service_fallback():
 def test_platform_context_helpers_and_snapshot_v2():
     core = create_vision_core()
     ctx = bootstrap_platform(core, force=True)
-    assert ctx.platform_version == "0.4.0-supervisor-readonly"
+    assert ctx.platform_version == "0.5.0-remote-readonly"
     assert ctx.get_service("logger") is not None
     assert ctx.get_skill("enispace") is not None
     assert ctx.get_health("core") is not None
     assert ctx.get_capability("enispace") is not None
 
     snap = ctx.get_platform_snapshot()
-    assert snap["platform_version"] == "0.4.0-supervisor-readonly"
+    assert snap["platform_version"] == "0.5.0-remote-readonly"
     assert snap["overall_health"] in ("ONLINE", "DEGRADED", "ERROR", "OFFLINE")
     assert "components_health" in snap
     assert isinstance(snap["services"], list)

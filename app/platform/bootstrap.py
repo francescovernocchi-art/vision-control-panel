@@ -29,7 +29,7 @@ from utils.paths import PRODUCT_NAME, config_dir, data_dir, logs_dir, project_ro
 
 logger = get_logger("platform.bootstrap")
 
-PLATFORM_VERSION = "0.4.0-supervisor-readonly"
+PLATFORM_VERSION = "0.5.0-remote-readonly"
 
 _CONTEXT: Optional[PlatformContext] = None
 

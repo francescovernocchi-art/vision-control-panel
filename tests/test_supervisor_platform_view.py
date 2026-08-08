@@ -49,7 +49,7 @@ def test_supervisor_snapshot_complete():
     ctx = bootstrap_platform(core, force=True)
     snap = ctx.get_supervisor_snapshot()
     assert isinstance(snap, SupervisorSnapshot)
-    assert snap.platform_version == "0.4.0-supervisor-readonly"
+    assert snap.platform_version == "0.5.0-remote-readonly"
     assert snap.supervisor_status == "ONLINE"
     assert snap.overall_health in ("ONLINE", "DEGRADED", "ERROR", "OFFLINE", "UNKNOWN")
     assert snap.core_health is not None
@@ -130,7 +130,7 @@ def test_missing_registries_fallback():
         health=HealthRegistry(),
         services=ServiceRegistry(),
         skills=None,  # type: ignore[arg-type]
-        platform_version="0.4.0-supervisor-readonly",
+        platform_version="0.5.0-remote-readonly",
     )
     snap1 = SupervisorPlatformView(ctx1).get_supervisor_snapshot()
     assert snap1.skills == ()
@@ -141,7 +141,7 @@ def test_missing_registries_fallback():
         health=None,  # type: ignore[arg-type]
         services=ServiceRegistry(),
         skills=SkillRegistry(),
-        platform_version="0.4.0-supervisor-readonly",
+        platform_version="0.5.0-remote-readonly",
     )
     snap2 = SupervisorPlatformView(ctx2).get_supervisor_snapshot()
     assert snap2.overall_health == "UNKNOWN"
@@ -152,7 +152,7 @@ def test_missing_registries_fallback():
         health=HealthRegistry(),
         services=None,  # type: ignore[arg-type]
         skills=SkillRegistry(),
-        platform_version="0.4.0-supervisor-readonly",
+        platform_version="0.5.0-remote-readonly",
     )
     snap3 = SupervisorPlatformView(ctx3).get_supervisor_snapshot()
     assert snap3.services == ()
@@ -163,7 +163,7 @@ def test_missing_registries_fallback():
         health=HealthRegistry(),
         services=ServiceRegistry(),
         skills=SkillRegistry(),
-        platform_version="0.4.0-supervisor-readonly",
+        platform_version="0.5.0-remote-readonly",
     )
     snap4 = SupervisorPlatformView(ctx4).get_supervisor_snapshot()
     assert snap4.capabilities == ()

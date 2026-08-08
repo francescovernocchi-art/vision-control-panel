@@ -22,6 +22,7 @@ from app.remote.models import (
     now_iso,
 )
 from app.remote.remote_log import remote_log
+from app.remote.status_service import RemoteStatusService
 from app.remote.store import CommandStore
 
 StatusListener = Callable[[str], None]
@@ -49,7 +50,14 @@ class VisionRemoteAgent:
         self.config = config or RemoteConfig.load()
         self.store = store or CommandStore()
         self.backend = backend or create_backend(self.config)
-        self.dispatcher = CommandDispatcher(core)
+        self.status_service = RemoteStatusService(
+            core, config=self.config, agent=self
+        )
+        self.dispatcher = CommandDispatcher(
+            core,
+            status_service=self.status_service,
+            remote_execution_policy=self.config.remote_execution_policy,
+        )
         self.identity = DeviceIdentity(
             device_id=self.config.device_id,
             device_name=self.config.device_name,
@@ -58,6 +66,7 @@ class VisionRemoteAgent:
             hostname=socket.gethostname(),
             status=DeviceStatus.DISABLED,
             modules=[],
+            platform_version="",
         )
         self.events = EventSync(backend=self.backend, device_id=self.config.device_id)
         self.heartbeat = HeartbeatService(
@@ -219,14 +228,30 @@ class VisionRemoteAgent:
         self._running = False
 
     def _snapshot_for_heartbeat(self) -> dict[str, Any]:
-        snap = self.core.snapshot()
-        jobs = [
-            j.to_dict()
-            for j in self.core.jobs.list_jobs(limit=10)
-            if j.status in ("PROCESSING", "QUEUED", "PENDING")
-        ]
-        snap["current_jobs"] = jobs
-        return snap
+        """Heartbeat leggero via RemoteStatusService (non full GET_STATUS)."""
+        try:
+            summary = self.status_service.build_heartbeat_summary()
+            self.identity.platform_version = str(summary.get("platform_version") or "")
+            return {
+                "modules": summary.get("modules") or [],
+                "current_jobs": (
+                    [{"job_id": summary["current_job_id"]}]
+                    if summary.get("current_job_id")
+                    else []
+                ),
+                "platform_version": summary.get("platform_version") or "",
+                "timestamp": summary.get("timestamp") or "",
+            }
+        except Exception as exc:  # noqa: BLE001
+            remote_log.warning("heartbeat snapshot fallback: %s", exc)
+            snap = self.core.snapshot()
+            jobs = [
+                j.to_dict()
+                for j in self.core.jobs.list_jobs(limit=10)
+                if j.status in ("PROCESSING", "QUEUED", "PENDING")
+            ]
+            snap["current_jobs"] = jobs
+            return snap
 
     # ------------------------------------------------------------------ commands
     def _poll_and_execute(self) -> None:
@@ -314,6 +339,32 @@ class VisionRemoteAgent:
         try:
             payload = self.dispatcher.dispatch(cmd)
             ok = bool(payload.get("ok", True))
+            code = str(payload.get("code") or "")
+
+            # Policy remota: REJECTED (non FAILED operativo)
+            if code == "REMOTE_OPERATION_NOT_ENABLED":
+                cmd.status = CommandStatus.REJECTED
+                cmd.result = payload
+                cmd.error = code
+                cmd.finished_at = now_iso()
+                self.store.upsert(cmd)
+                try:
+                    self.backend.update_command(cmd)
+                except Exception:
+                    pass
+                remote_log.warning(
+                    "Command rejected by remote policy id=%s type=%s",
+                    cmd.command_id,
+                    cmd.command_type,
+                )
+                self.events.publish_command_event(
+                    "COMMAND_FAILED",
+                    command_id=cmd.command_id,
+                    message=code,
+                    metadata=payload,
+                )
+                return cmd
+
             if payload.get("code") == "NOT_IMPLEMENTED":
                 # validato ma non operativo — COMPLETED con flag, non azione pericolosa
                 cmd.status = CommandStatus.COMPLETED
@@ -332,7 +383,7 @@ class VisionRemoteAgent:
                 )
                 return cmd
 
-            if not ok and payload.get("code") not in (None, ""):
+            if not ok and code not in (None, ""):
                 cmd.status = CommandStatus.FAILED
                 cmd.result = payload
                 cmd.error = str(payload.get("message") or payload.get("code") or "failed")

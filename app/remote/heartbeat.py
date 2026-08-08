@@ -28,7 +28,6 @@ class HeartbeatService:
             if isinstance(job, dict) and job.get("job_id"):
                 current = str(job["job_id"])
                 break
-        # anche da kpi/core snapshot
         if not current:
             for j in (snap.get("jobs_processing") or []):
                 current = str(j)
@@ -37,6 +36,8 @@ class HeartbeatService:
         self.identity.last_seen_at = now_iso()
         self.identity.modules = list(modules)
         self.identity.current_job_id = current or self.identity.current_job_id
+        if snap.get("platform_version"):
+            self.identity.platform_version = str(snap.get("platform_version") or "")
         return self.identity
 
     def send(self, status: str = DeviceStatus.ONLINE) -> bool:

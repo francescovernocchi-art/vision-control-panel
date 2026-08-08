@@ -1,4 +1,4 @@
-"""CommandDispatcher — inoltra a VisionCore / moduli, senza logica di dominio."""
+"""CommandDispatcher — inoltra a VisionCore / moduli; policy remota status_only."""
 
 from __future__ import annotations
 
@@ -10,16 +10,45 @@ from app.remote.models import (
     STUB_COMMANDS,
     CommandType,
     RemoteCommand,
+    is_remote_command_allowed,
 )
 from app.remote.remote_log import remote_log
+from app.remote.status_service import RemoteStatusService
 
 
 class CommandDispatcher:
-    def __init__(self, core: VisionCore) -> None:
+    def __init__(
+        self,
+        core: VisionCore,
+        *,
+        status_service: Optional[RemoteStatusService] = None,
+        remote_execution_policy: str = "status_only",
+    ) -> None:
         self.core = core
+        self.status_service = status_service or RemoteStatusService(core)
+        self.remote_execution_policy = remote_execution_policy or "status_only"
 
     def dispatch(self, command: RemoteCommand) -> dict[str, Any]:
         ctype = command.command_type
+
+        # Policy di fase: solo GET_STATUS dai comandi remoti (non path locali)
+        if not is_remote_command_allowed(
+            ctype, policy=self.remote_execution_policy
+        ):
+            remote_log.info(
+                "Remote command rejected by policy=%s type=%s",
+                self.remote_execution_policy,
+                ctype,
+            )
+            return {
+                "ok": False,
+                "code": "REMOTE_OPERATION_NOT_ENABLED",
+                "message": (
+                    f"{ctype} non autorizzato in modalità "
+                    f"{self.remote_execution_policy} (solo GET_STATUS remoto)"
+                ),
+            }
+
         if ctype in STUB_COMMANDS:
             return {
                 "ok": False,
@@ -45,35 +74,7 @@ class CommandDispatcher:
         return {"ok": False, "code": "NOT_IMPLEMENTED", "message": ctype}
 
     def _get_status(self) -> dict[str, Any]:
-        snap = self.core.snapshot()
-        kpi = snap.get("kpi") or {}
-        events = self.core.event_bus.recent(1)
-        last_event = events[-1].to_dict() if events else None
-        current_jobs = [
-            j.to_dict()
-            for j in self.core.jobs.list_jobs(limit=5)
-            if j.status in ("PROCESSING", "QUEUED", "PENDING")
-        ]
-        return {
-            "ok": True,
-            "vision_core": {
-                "online": bool(snap.get("core_online")),
-                "product": snap.get("product"),
-                "assistant": snap.get("assistant"),
-                "assistant_state": snap.get("assistant_state"),
-                "started_at": snap.get("started_at"),
-            },
-            "modules": snap.get("modules") or [],
-            "current_jobs": current_jobs,
-            "queue": {
-                "today": kpi.get("today", 0),
-                "processing": kpi.get("processing", 0),
-                "queued": kpi.get("queued", 0),
-                "attention": kpi.get("attention", 0),
-                "errors": kpi.get("errors", 0),
-            },
-            "last_event": last_event,
-        }
+        return self.status_service.build_status()
 
     def _check_enispace_mail(self, command: RemoteCommand) -> dict[str, Any]:
         """Delega al modulo eniSpace — nessuna logica eniSpace qui."""
@@ -86,13 +87,11 @@ class CommandDispatcher:
                 "code": "NO_HANDLER",
                 "message": "eniSpace.check_mail_now non disponibile",
             }
-        # dry_run param solo per test automatici (niente IMAP reale)
         dry_run = bool(command.params.get("dry_run"))
         remote_log.info("Dispatch CHECK_ENISPACE_MAIL dry_run=%s", dry_run)
         result = mod.check_mail_now(dry_run=dry_run)
         if not isinstance(result, dict):
             result = {"ok": True, "result": result}
-        # Sync VisionJob se il modulo ne ha creato uno
         job_id = str(result.get("vision_job_id") or "")
         if job_id:
             job = self.core.jobs.get_job(job_id)
