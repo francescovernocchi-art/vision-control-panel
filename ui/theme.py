@@ -65,7 +65,7 @@ RADIUS_LG = 10
 BTN_HEIGHT = 40
 SIDEBAR_WIDTH = 236
 HEADER_HEIGHT = 56
-APP_VERSION = "1.0"
+APP_VERSION = "2.0-vision"
 
 # Font families (Inter if present, else Segoe UI)
 _FONT_FAMILY: Optional[str] = None

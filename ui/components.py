@@ -402,13 +402,21 @@ class AppHeader(ctk.CTkFrame):
 
 
 class Sidebar(ctk.CTkFrame):
+    # Layout modulare VIS•ION (eniSpace resta area operativa esistente)
     ITEMS = [
         ("dashboard", "Dashboard", "dashboard"),
+        ("assistente", "Assistente", "jarvis"),
+        ("moduli", "Moduli", "docs"),
+        ("enispace", "  eniSpace", "search"),
+        ("coin_transport", "  Trasporto Monete", "mail"),
+        ("lavorazioni", "Lavorazioni", "history"),
+        ("attivita", "Attività", "print"),
+        ("notifiche", "Notifiche", "mail"),
+        ("jarvis", "JARVIS (eniSpace)", "jarvis"),
         ("ricerca", "Ricerca", "search"),
         ("mail", "Mail", "mail"),
         ("documenti", "Documenti", "docs"),
         ("coda", "Coda stampa", "print"),
-        ("jarvis", "JARVIS", "jarvis"),
         ("storico", "Storico", "history"),
         ("impostazioni", "Impostazioni", "settings"),
     ]
@@ -446,21 +454,21 @@ class Sidebar(ctk.CTkFrame):
             titles = ctk.CTkFrame(logo_row, fg_color="transparent")
             titles.pack(side="left", fill="x", expand=True)
             ctk.CTkLabel(
-                titles, text="VIS", font=_font(18, "bold"), text_color=PRIMARY
+                titles, text="VIS•ION", font=_font(18, "bold"), text_color=PRIMARY
             ).pack(anchor="w")
             ctk.CTkLabel(
                 titles,
-                text="eniSpace Utility",
+                text="Intelligent Operations",
                 font=_font(11),
                 text_color=MUTED,
             ).pack(anchor="w")
         else:
             ctk.CTkLabel(
-                brand, text="VIS", font=_font(22, "bold"), text_color=PRIMARY
+                brand, text="VIS•ION", font=_font(22, "bold"), text_color=PRIMARY
             ).pack(anchor="w")
             ctk.CTkLabel(
                 brand,
-                text="eniSpace Utility",
+                text="Intelligent Operations",
                 font=_font(12),
                 text_color=MUTED,
             ).pack(anchor="w")

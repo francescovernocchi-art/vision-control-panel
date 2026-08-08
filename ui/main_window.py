@@ -1,4 +1,4 @@
-"""Finestra principale VIS | eniSpace Utility."""
+"""Finestra principale VIS•ION — VIS Intelligent Operations Network."""
 
 from __future__ import annotations
 
@@ -43,8 +43,9 @@ from ui.jarvis_avatar import JarvisAvatarPanel
 from ui.theme import APP_VERSION, COLORS, SUCCESS, apply_treeview_style, font_family
 from ui.toast import ToastManager
 from utils.logger import drain_gui_log_queue, get_logger, set_debug_mode
-from utils.paths import APP_NAME, default_download_dir
+from utils.paths import APP_NAME, ASSISTANT_NAME, PRODUCT_FULL_NAME, default_download_dir
 from utils.pdf_preview import render_pdf_thumbnail
+from app.bootstrap import bind_jarvis, create_vision_core
 
 logger = get_logger("ui")
 
@@ -58,12 +59,19 @@ STATUS_ICON = {
 }
 
 _PAGE_META = {
-    "dashboard": ("Dashboard", "Panoramica operativa"),
+    "dashboard": ("Dashboard", "VIS•ION Core — panoramica operativa"),
+    "assistente": ("Assistente", "Stato avatar globale VIS•ION"),
+    "moduli": ("Moduli", "Stato moduli registrati"),
+    "enispace": ("eniSpace", "Automazione ENI / MdA"),
+    "coin_transport": ("Trasporto Monete", "Workflow Sala Conta (in sviluppo)"),
+    "lavorazioni": ("Lavorazioni", "VisionJob globali"),
+    "attivita": ("Attività", "Eventi recenti VIS•ION"),
+    "notifiche": ("Notifiche", "NotificationService centrale"),
     "ricerca": ("Ricerca", "Cerca ordini e scarica allegati"),
     "mail": ("Mail", "Registro mail gestite"),
     "documenti": ("Documenti", "Allegati e download"),
     "coda": ("Coda stampa", "PDF in attesa di stampa"),
-    "jarvis": ("JARVIS", "Supervisore automatico"),
+    "jarvis": ("JARVIS", "Supervisore automatico eniSpace"),
     "storico": ("Storico", "Contratti ricercati"),
 }
 
@@ -75,7 +83,7 @@ class MainWindow(ctk.CTk):
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("dark-blue")
 
-        self.title(f"VIS | eniSpace Utility")
+        self.title(f"{APP_NAME} — {PRODUCT_FULL_NAME}")
         self.geometry("1280x820")
         self.minsize(1024, 700)
         self.configure(fg_color=COLORS["bg"])
@@ -129,6 +137,14 @@ class MainWindow(ctk.CTk):
         self.jarvis.logger.add_listener(self._on_jarvis_log_entry)
         try:
             self.jarvis.notifications.add_listener(self._on_jarvis_notify)
+        except Exception:
+            pass
+
+        # VIS•ION Core — moduli eniSpace + Trasporto Monete
+        self.vision = create_vision_core(jarvis=self.jarvis)
+        bind_jarvis(self.jarvis)
+        try:
+            self.vision.add_assistant_listener(self._on_vision_assistant_state)
         except Exception:
             pass
 
@@ -189,9 +205,21 @@ class MainWindow(ctk.CTk):
         self.tab_jarvis = ctk.CTkFrame(self.content, fg_color="transparent")
         self.tab_register = ctk.CTkFrame(self.content, fg_color="transparent")
         self.tab_history = ctk.CTkFrame(self.content, fg_color="transparent")
+        self.tab_vision_modules = ctk.CTkFrame(self.content, fg_color="transparent")
+        self.tab_coin = ctk.CTkFrame(self.content, fg_color="transparent")
+        self.tab_jobs = ctk.CTkFrame(self.content, fg_color="transparent")
+        self.tab_activity = ctk.CTkFrame(self.content, fg_color="transparent")
+        self.tab_notifications = ctk.CTkFrame(self.content, fg_color="transparent")
 
         self._pages = {
             "dashboard": self.tab_dashboard,
+            "assistente": self.tab_jarvis,
+            "moduli": self.tab_vision_modules,
+            "enispace": self.tab_search,
+            "coin_transport": self.tab_coin,
+            "lavorazioni": self.tab_jobs,
+            "attivita": self.tab_activity,
+            "notifiche": self.tab_notifications,
             "ricerca": self.tab_search,
             "mail": self.tab_register,
             "documenti": self.tab_search,
@@ -208,6 +236,11 @@ class MainWindow(ctk.CTk):
         self._build_jarvis_tab()
         self._build_register_tab()
         self._build_history_tab()
+        self._build_vision_modules_tab()
+        self._build_coin_transport_tab()
+        self._build_vision_jobs_tab()
+        self._build_vision_activity_tab()
+        self._build_vision_notifications_tab()
 
         self._navigate("dashboard")
 
@@ -235,9 +268,24 @@ class MainWindow(ctk.CTk):
         self.sidebar.set_active(key)
         title, subtitle = _PAGE_META.get(key, ("VIS", ""))
         self.app_header.set_page(title, subtitle)
-        if key in ("dashboard", "jarvis", "coda", "mail"):
+        if key in (
+            "dashboard",
+            "jarvis",
+            "assistente",
+            "coda",
+            "mail",
+            "moduli",
+            "lavorazioni",
+            "attivita",
+            "notifiche",
+            "coin_transport",
+        ):
             try:
                 self._refresh_dashboard_metrics()
+            except Exception:
+                pass
+            try:
+                self._refresh_vision_views()
             except Exception:
                 pass
 
@@ -245,6 +293,49 @@ class MainWindow(ctk.CTk):
         parent = self.tab_dashboard
         scroll = ctk.CTkScrollableFrame(parent, fg_color="transparent")
         scroll.pack(fill="both", expand=True)
+
+        # VIS•ION Core status strip
+        vision_card = Card(
+            scroll,
+            title="VIS•ION CORE",
+            subtitle=PRODUCT_FULL_NAME,
+        )
+        vision_card.pack(fill="x", pady=(0, 10))
+        self.vision_status_label = ctk.CTkLabel(
+            vision_card.body,
+            text="CORE ONLINE · Assistente JARVIS · Moduli in caricamento…",
+            font=(font_family(), 13),
+            text_color=COLORS["text"],
+            anchor="w",
+            justify="left",
+        )
+        self.vision_status_label.pack(fill="x", pady=(0, 6))
+        self.vision_modules_label = ctk.CTkLabel(
+            vision_card.body,
+            text="",
+            font=(font_family(), 12),
+            text_color=COLORS["muted"],
+            anchor="w",
+            justify="left",
+        )
+        self.vision_modules_label.pack(fill="x")
+
+        kpi_vision = ctk.CTkFrame(scroll, fg_color="transparent")
+        kpi_vision.pack(fill="x", pady=(0, 10))
+        for i in range(6):
+            kpi_vision.grid_columnconfigure(i, weight=1)
+        self.kpi_v_today = MetricCard(kpi_vision, "Lavorazioni oggi", "0", "VisionJob")
+        self.kpi_v_today.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        self.kpi_v_proc = MetricCard(kpi_vision, "In elaborazione", "0", "")
+        self.kpi_v_proc.grid(row=0, column=1, sticky="nsew", padx=3)
+        self.kpi_v_queue = MetricCard(kpi_vision, "In coda", "0", "")
+        self.kpi_v_queue.grid(row=0, column=2, sticky="nsew", padx=3)
+        self.kpi_v_done = MetricCard(kpi_vision, "Completate", "0", "")
+        self.kpi_v_done.grid(row=0, column=3, sticky="nsew", padx=3)
+        self.kpi_v_attn = MetricCard(kpi_vision, "Intervento", "0", "richiesto")
+        self.kpi_v_attn.grid(row=0, column=4, sticky="nsew", padx=3)
+        self.kpi_v_err = MetricCard(kpi_vision, "Errori", "0", "")
+        self.kpi_v_err.grid(row=0, column=5, sticky="nsew", padx=(6, 0))
 
         kpi_row = ctk.CTkFrame(scroll, fg_color="transparent")
         kpi_row.pack(fill="x", pady=(0, 10))
@@ -402,6 +493,11 @@ class MainWindow(ctk.CTk):
                     )
             except Exception:
                 pass
+
+        try:
+            self._refresh_vision_views()
+        except Exception:
+            pass
 
     def _build_search_tab(self) -> None:
         parent = self.tab_search
@@ -1245,9 +1341,205 @@ class MainWindow(ctk.CTk):
         self.history_tree.pack(fill="both", expand=True, padx=8, pady=8)
         self.history_tree.bind("<Double-1>", lambda _e: self.open_selected_history())
 
+    # ================================================================== VIS•ION views
+    def _build_vision_modules_tab(self) -> None:
+        parent = self.tab_vision_modules
+        card = Card(parent, title="Moduli VIS•ION", subtitle="Stato ONLINE / OFFLINE / IN SVILUPPO")
+        card.pack(fill="both", expand=True, pady=4)
+        self.modules_box = styled_textbox(card.body, height=360, state="disabled")
+        self.modules_box.pack(fill="both", expand=True)
+
+    def _build_coin_transport_tab(self) -> None:
+        parent = self.tab_coin
+        card = Card(
+            parent,
+            title="Trasporto Monete",
+            subtitle="Scheletro workflow — PEC pronta per approvazione (nessun invio automatico)",
+        )
+        card.pack(fill="both", expand=True, pady=4)
+        body = card.body
+        ctk.CTkLabel(
+            body,
+            text=(
+                "Attività · Mezzi · Province · Documenti · PEC · Storico\n\n"
+                "Workflow: MAIL SALA CONTA → … → PREPARAZIONE PEC → APPROVAZIONE\n"
+                "Stato finale predefinito: PEC PRONTA PER APPROVAZIONE\n"
+                "Azioni future: [ APRI ] [ MODIFICA ] [ APPROVA E INVIA ]"
+            ),
+            text_color=COLORS["muted"],
+            justify="left",
+            anchor="w",
+        ).pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(
+            body,
+            text="Simula lavorazione (scheletro)",
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["accent_hover"],
+            command=self._simulate_coin_transport_job,
+        ).pack(anchor="w")
+        self.coin_jobs_box = styled_textbox(body, height=220, state="disabled")
+        self.coin_jobs_box.pack(fill="both", expand=True, pady=(12, 0))
+
+    def _build_vision_jobs_tab(self) -> None:
+        parent = self.tab_jobs
+        card = Card(parent, title="Lavorazioni VIS•ION", subtitle="ID globali VISION-YYYY-NNNNNN")
+        card.pack(fill="both", expand=True, pady=4)
+        self.vision_jobs_box = styled_textbox(card.body, height=400, state="disabled")
+        self.vision_jobs_box.pack(fill="both", expand=True)
+
+    def _build_vision_activity_tab(self) -> None:
+        parent = self.tab_activity
+        card = Card(parent, title="Attività globale", subtitle="EventBus VIS•ION")
+        card.pack(fill="both", expand=True, pady=4)
+        self.vision_activity_box = styled_textbox(card.body, height=400, state="disabled")
+        self.vision_activity_box.pack(fill="both", expand=True)
+
+    def _build_vision_notifications_tab(self) -> None:
+        parent = self.tab_notifications
+        card = Card(
+            parent,
+            title="Notifiche",
+            subtitle="JOB_COMPLETED · JOB_FAILED · NEEDS_ATTENTION · WAITING_APPROVAL",
+        )
+        card.pack(fill="both", expand=True, pady=4)
+        self.vision_notify_box = styled_textbox(card.body, height=400, state="disabled")
+        self.vision_notify_box.pack(fill="both", expand=True)
+
+    def _set_textbox(self, box, text: str) -> None:
+        if box is None:
+            return
+        try:
+            box.configure(state="normal")
+            box.delete("1.0", "end")
+            box.insert("1.0", text)
+            box.configure(state="disabled")
+        except Exception:
+            pass
+
+    def _refresh_vision_views(self) -> None:
+        if not hasattr(self, "vision"):
+            return
+        snap = self.vision.snapshot()
+        core = "ONLINE" if snap.get("core_online") else "OFFLINE"
+        asst = "ONLINE" if snap.get("assistant_online") else "OFFLINE"
+        state = snap.get("assistant_state") or "—"
+        if hasattr(self, "vision_status_label"):
+            self.vision_status_label.configure(
+                text=(
+                    f"CORE {core}  ·  {ASSISTANT_NAME} {asst}  ·  stato {state}"
+                )
+            )
+        lines = []
+        for m in snap.get("modules") or []:
+            status = m.get("status", "?")
+            dot = "●"
+            lines.append(f"{dot} {m.get('name')}  [{status}]  v{m.get('version')}")
+        if hasattr(self, "vision_modules_label"):
+            self.vision_modules_label.configure(
+                text="MODULI:\n" + ("\n".join(lines) if lines else "(nessuno)")
+            )
+        kpi = snap.get("kpi") or {}
+        if hasattr(self, "kpi_v_today"):
+            self.kpi_v_today.set_value(str(kpi.get("today", 0)), "VisionJob")
+            self.kpi_v_proc.set_value(str(kpi.get("processing", 0)), "")
+            self.kpi_v_queue.set_value(str(kpi.get("queued", 0)), "")
+            self.kpi_v_done.set_value(str(kpi.get("completed", 0)), "")
+            self.kpi_v_attn.set_value(str(kpi.get("attention", 0)), "richiesto")
+            self.kpi_v_err.set_value(str(kpi.get("errors", 0)), "")
+
+        if hasattr(self, "modules_box"):
+            self._set_textbox(
+                self.modules_box,
+                "\n".join(lines) if lines else "Nessun modulo registrato.",
+            )
+        if hasattr(self, "vision_jobs_box"):
+            jobs = self.vision.jobs.list_jobs(limit=50)
+            job_lines = [
+                f"{j.job_id}  |  {j.module_id}  |  {j.status}  |  {j.title or j.current_step}"
+                for j in jobs
+            ]
+            self._set_textbox(
+                self.vision_jobs_box,
+                "\n".join(job_lines) if job_lines else "Nessuna lavorazione VIS•ION.",
+            )
+        if hasattr(self, "vision_activity_box"):
+            evs = self.vision.event_bus.recent(80)
+            ev_lines = [
+                f"{e.timestamp}  [{e.module}]  {e.event_type}  {e.message}"
+                for e in reversed(evs)
+            ]
+            self._set_textbox(
+                self.vision_activity_box,
+                "\n".join(ev_lines) if ev_lines else "Nessun evento.",
+            )
+        if hasattr(self, "vision_notify_box"):
+            notes = self.vision.notifications.recent(80)
+            n_lines = [
+                f"{n.timestamp}  {n.event}  [{n.module}]  {n.message}"
+                for n in reversed(notes)
+            ]
+            self._set_textbox(
+                self.vision_notify_box,
+                "\n".join(n_lines) if n_lines else "Nessuna notifica.",
+            )
+        if hasattr(self, "coin_jobs_box"):
+            coin_jobs = self.vision.jobs.list_jobs(limit=30, module_id="coin_transport")
+            c_lines = [
+                f"{j.job_id}  |  {j.status}  |  {j.current_step}  |  {j.title}"
+                for j in coin_jobs
+            ]
+            self._set_textbox(
+                self.coin_jobs_box,
+                "\n".join(c_lines) if c_lines else "Nessuna lavorazione Trasporto Monete.",
+            )
+        try:
+            self.sidebar.set_system_status(
+                f"VIS•ION {core} · {ASSISTANT_NAME} {state}"
+            )
+        except Exception:
+            pass
+
+    def _simulate_coin_transport_job(self) -> None:
+        mod = self.vision.modules.get("coin_transport")
+        if not mod or not hasattr(mod, "create_job_from_mail"):
+            messagebox.showwarning(APP_NAME, "Modulo Trasporto Monete non disponibile.")
+            return
+        from datetime import datetime
+
+        job = mod.create_job_from_mail(
+            subject="Simulazione Sala Conta",
+            source_id=f"sim-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            metadata={"simulated": True},
+        )
+        self.append_activity(
+            f"Trasporto Monete: {job.job_id if job else '?'} → PEC PRONTA PER APPROVAZIONE"
+        )
+        self._refresh_vision_views()
+        try:
+            messagebox.showinfo(
+                APP_NAME,
+                "PEC PRONTA PER APPROVAZIONE\n\n[ APRI ] [ MODIFICA ] [ APPROVA E INVIA ]\n"
+                "(Invio automatico disabilitato)",
+            )
+        except Exception:
+            pass
+
+    def _on_vision_assistant_state(self, state: str) -> None:
+        def _apply() -> None:
+            try:
+                self.sidebar.set_system_status(f"{ASSISTANT_NAME}: {state}")
+            except Exception:
+                pass
+
+        self._post_ui(_apply)
+
     # ================================================================== lifecycle
     def _post_init(self) -> None:
-        self.append_activity("Applicazione avviata.")
+        self.append_activity(f"{APP_NAME} avviata — {PRODUCT_FULL_NAME}")
+        try:
+            self._refresh_vision_views()
+        except Exception:
+            pass
         self.refresh_history()
         self.refresh_print_queue()
         self.refresh_mail_register()
@@ -1278,6 +1570,11 @@ class MainWindow(ctk.CTk):
         self._cancel_autosync()
         try:
             self.jarvis.stop()
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "vision"):
+                self.vision.stop()
         except Exception:
             pass
         try:
