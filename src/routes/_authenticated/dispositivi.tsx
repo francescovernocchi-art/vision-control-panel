@@ -6,7 +6,7 @@ import { CommandButton } from "@/components/vision/CommandButton";
 import { StatusBadge, StatusDot } from "@/components/vision/StatusBadge";
 import { useRoles } from "@/hooks/useAuth";
 import { formatDateTime, formatRelative, isDeviceOnline } from "@/lib/vision";
-import { sendCommand, useDevices, useJobs, useModules } from "@/lib/vision-data";
+import { sendCommand, useCommands, useDevices, useJobs, useModules } from "@/lib/vision-data";
 
 export const Route = createFileRoute("/_authenticated/dispositivi")({
   head: () => ({
