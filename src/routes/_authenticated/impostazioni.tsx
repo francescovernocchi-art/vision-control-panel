@@ -1,13 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Download, Smartphone } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { AppShell } from "@/components/vision/AppShell";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/vision/StatusBadge";
 import { useRoles } from "@/hooks/useAuth";
 import { usePwaInstall } from "@/hooks/usePwaInstall";
 import { COMMAND_WHITELIST } from "@/lib/vision";
 import { useProfiles, useUserRoles } from "@/lib/vision-data";
+import { saveAdminEmail, useBootstrap, useInvalidateBootstrap } from "@/lib/vision-bootstrap";
 
 export const Route = createFileRoute("/_authenticated/impostazioni")({
   head: () => ({
@@ -27,6 +32,15 @@ function ImpostazioniPage() {
   const { isAdmin } = useRoles();
   const { data: profiles = [] } = useProfiles();
   const { data: roles = [] } = useUserRoles();
+  const { adminEmail } = useBootstrap();
+  const invalidateBootstrap = useInvalidateBootstrap();
+  const [adminInput, setAdminInput] = useState("");
+  const [savingAdmin, setSavingAdmin] = useState(false);
+
+  useEffect(() => {
+    if (adminEmail) setAdminInput(adminEmail);
+  }, [adminEmail]);
+
 
   return (
     <AppShell title="Impostazioni" subtitle="Configurazione applicazione">
@@ -77,7 +91,56 @@ function ImpostazioniPage() {
           </ul>
         </section>
 
+        <section className="hud-panel space-y-2 p-4">
+          <p className="hud-title">Amministratore (configurazione iniziale)</p>
+          <p className="text-sm text-muted-foreground">
+            Email con ruolo <span className="font-mono">ADMIN</span>:{" "}
+            <span className="font-mono text-accent">{adminEmail ?? "non configurata"}</span>
+          </p>
+          {isAdmin ? (
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-[16rem] flex-1 space-y-1.5">
+                <Label htmlFor="admin-email">Nuova email amministratore</Label>
+                <Input
+                  id="admin-email"
+                  type="email"
+                  value={adminInput}
+                  onChange={(e) => setAdminInput(e.target.value)}
+                  placeholder="nome.cognome@azienda.it"
+                />
+              </div>
+              <Button
+                disabled={savingAdmin}
+                onClick={() => {
+                  const value = adminInput.trim().toLowerCase();
+                  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+                    toast.error("Email non valida");
+                    return;
+                  }
+                  setSavingAdmin(true);
+                  void saveAdminEmail(value)
+                    .then(() => {
+                      invalidateBootstrap();
+                      toast.success("Amministratore aggiornato");
+                    })
+                    .catch((e: Error) =>
+                      toast.error("Salvataggio non riuscito", { description: e.message }),
+                    )
+                    .finally(() => setSavingAdmin(false));
+                }}
+              >
+                Salva
+              </Button>
+            </div>
+          ) : (
+            <p className="text-[0.65rem] text-muted-foreground">
+              Solo un amministratore può modificare questa impostazione.
+            </p>
+          )}
+        </section>
+
         {isAdmin && (
+
           <section className="hud-panel space-y-2 p-4">
             <p className="hud-title">Utenti</p>
             <ul className="space-y-1.5">

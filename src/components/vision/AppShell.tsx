@@ -28,7 +28,9 @@ import { usePwaInstall } from "@/hooks/usePwaInstall";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { logAudit, useDevices, useNotifications, useVisionRealtime } from "@/lib/vision-data";
+import { useBootstrap } from "@/lib/vision-bootstrap";
 import { isDeviceOnline } from "@/lib/vision";
+
 
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -63,7 +65,9 @@ export function AppShell({
   const { roles } = useRoles();
   const { data: profile } = useProfile();
   const { canInstall, install } = usePwaInstall();
+  const bootstrap = useBootstrap();
   const [menuOpen, setMenuOpen] = useState(false);
+
 
   const realtime = useVisionRealtime([
     "devices",
