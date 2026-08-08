@@ -146,6 +146,13 @@ class MainWindow(ctk.CTk):
         # VIS•ION Core — moduli eniSpace + Trasporto Monete
         self.vision = create_vision_core(jarvis=self.jarvis)
         bind_jarvis(self.jarvis)
+        # Platform Layer (dual-registration catalog) — trasparente, zero side-effect operativi
+        try:
+            from app.platform import bootstrap_platform
+
+            self.platform = bootstrap_platform(self.vision, jarvis=self.jarvis)
+        except Exception:
+            self.platform = None
         try:
             self.vision.add_assistant_listener(self._on_vision_assistant_state)
         except Exception:
