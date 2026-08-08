@@ -56,6 +56,95 @@ class EniSpaceModule:
         self.jarvis = jarvis
         self._wire_jarvis_bridge()
 
+    def check_mail_now(self, *, dry_run: bool = False) -> dict:
+        """
+        Entry point remoto/locale: un controllo mail via JARVIS esistente.
+        dry_run=True → nessun accesso IMAP (test automatici).
+        """
+        if dry_run:
+            logger.info("check_mail_now dry_run (nessun IMAP)")
+            if self.event_bus:
+                self.event_bus.publish(
+                    EventType.MAIL_ANALYZED,
+                    message="CHECK_ENISPACE_MAIL dry_run",
+                    module=self.MODULE_ID,
+                    metadata={"dry_run": True},
+                )
+            return {
+                "ok": True,
+                "dry_run": True,
+                "message": "dry_run — nessun accesso mail/eniSpace",
+                "module_id": self.MODULE_ID,
+            }
+        if not self.jarvis:
+            return {
+                "ok": False,
+                "code": "JARVIS_NOT_BOUND",
+                "message": "JARVIS non collegato al modulo eniSpace",
+            }
+        if not hasattr(self.jarvis, "run_mail_check_once"):
+            return {
+                "ok": False,
+                "code": "NO_HANDLER",
+                "message": "JarvisSupervisor.run_mail_check_once assente",
+            }
+        if self.event_bus:
+            self.event_bus.publish(
+                EventType.MAIL_RECEIVED,
+                message="CHECK_ENISPACE_MAIL richiesto",
+                module=self.MODULE_ID,
+            )
+        try:
+            result = self.jarvis.run_mail_check_once()
+            if not isinstance(result, dict):
+                result = {"ok": True, "result": result}
+            result.setdefault("ok", True)
+            result["module_id"] = self.MODULE_ID
+            return result
+        except Exception as exc:  # noqa: BLE001
+            logger.error("check_mail_now failed: %s", exc)
+            return {"ok": False, "code": "CHECK_FAILED", "message": str(exc)}
+
+    def retry_job(self, job_id: str) -> dict:
+        """Retry minimo: job JARVIS FAILED/NEEDS_ATTENTION → PENDING."""
+        if not self.jarvis or not hasattr(self.jarvis, "db"):
+            return {"ok": False, "code": "JARVIS_NOT_BOUND", "message": "JARVIS assente"}
+        try:
+            jid = int(str(job_id).replace("JARVIS-", "").strip())
+        except ValueError:
+            return {
+                "ok": False,
+                "code": "BAD_JOB_ID",
+                "message": f"job_id non valido: {job_id}",
+            }
+        try:
+            from services.jarvis.states import JobStatus
+
+            job = self.jarvis.db.get_jarvis_job(jid)
+            if not job:
+                return {
+                    "ok": False,
+                    "code": "NOT_FOUND",
+                    "message": f"job {jid} non trovato",
+                }
+            if job.status not in (
+                JobStatus.FAILED,
+                JobStatus.NEEDS_ATTENTION,
+                "FAILED",
+                "NEEDS_ATTENTION",
+            ):
+                return {
+                    "ok": False,
+                    "code": "NOT_RETRYABLE",
+                    "message": f"stato {job.status} non ritentabile",
+                }
+            job.status = JobStatus.PENDING
+            job.error_message = ""
+            self.jarvis.db.update_jarvis_job(job)
+            return {"ok": True, "jarvis_job_id": jid, "status": "PENDING"}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "code": "RETRY_FAILED", "message": str(exc)}
+
     def start(self) -> None:
         self._info.status = ModuleStatus.ONLINE
         self._wire_jarvis_bridge()

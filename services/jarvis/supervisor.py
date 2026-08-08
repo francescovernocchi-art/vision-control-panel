@@ -137,6 +137,26 @@ class JarvisSupervisor:
             )
             self._notify_ui()
 
+    def run_mail_check_once(self) -> dict:
+        """
+        Esegue un singolo ciclo controllo mail (stessa logica di _cycle).
+        Usato da VIS•ION Remote Agent / eniSpaceModule.check_mail_now.
+        Non avvia il loop supervisore se non già attivo.
+        """
+        settings = self.get_settings()
+        before_pending = self.pending_count()
+        self._cycle(settings)
+        after_pending = self.pending_count()
+        return {
+            "ok": True,
+            "pending_before": before_pending,
+            "pending_after": after_pending,
+            "new_or_pending": after_pending,
+            "state": str(self.state),
+            "last_check": self.last_check,
+            "snapshot": self.snapshot(),
+        }
+
     def _loop(self) -> None:
         # Prima scansione subito
         first = True

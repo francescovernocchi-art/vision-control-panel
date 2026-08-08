@@ -46,6 +46,9 @@ from utils.logger import drain_gui_log_queue, get_logger, set_debug_mode
 from utils.paths import APP_NAME, ASSISTANT_NAME, PRODUCT_FULL_NAME, default_download_dir
 from utils.pdf_preview import render_pdf_thumbnail
 from app.bootstrap import bind_jarvis, create_vision_core
+from app.remote import VisionRemoteAgent
+from app.remote.config import RemoteConfig
+from app.remote.models import DeviceStatus
 
 logger = get_logger("ui")
 
@@ -145,6 +148,14 @@ class MainWindow(ctk.CTk):
         bind_jarvis(self.jarvis)
         try:
             self.vision.add_assistant_listener(self._on_vision_assistant_state)
+        except Exception:
+            pass
+
+        # Remote Agent (kill switch OFF di default — nessun cloud senza opt-in)
+        self.remote_config = RemoteConfig.load()
+        self.remote_agent = VisionRemoteAgent(self.vision, self.remote_config)
+        try:
+            self.remote_agent.add_status_listener(self._on_remote_status)
         except Exception:
             pass
 
@@ -319,6 +330,28 @@ class MainWindow(ctk.CTk):
             justify="left",
         )
         self.vision_modules_label.pack(fill="x")
+
+        remote_row = ctk.CTkFrame(vision_card.body, fg_color="transparent")
+        remote_row.pack(fill="x", pady=(8, 0))
+        self.remote_indicator = ctk.CTkLabel(
+            remote_row,
+            text="REMOTE  ○ DISABLED",
+            font=(font_family(), 12),
+            text_color=COLORS["muted"],
+            anchor="w",
+        )
+        self.remote_indicator.pack(side="left")
+        self.remote_toggle_btn = ctk.CTkButton(
+            remote_row,
+            text="REMOTE CONTROL OFF",
+            width=160,
+            height=28,
+            fg_color=COLORS["panel_alt"],
+            hover_color=COLORS["border"],
+            command=self._toggle_remote_control,
+        )
+        self.remote_toggle_btn.pack(side="right")
+        self._update_remote_indicator(DeviceStatus.DISABLED)
 
         kpi_vision = ctk.CTkFrame(scroll, fg_color="transparent")
         kpi_vision.pack(fill="x", pady=(0, 10))
@@ -1533,6 +1566,62 @@ class MainWindow(ctk.CTk):
 
         self._post_ui(_apply)
 
+    def _on_remote_status(self, status: str) -> None:
+        self._post_ui(lambda: self._update_remote_indicator(status))
+
+    def _update_remote_indicator(self, status: str) -> None:
+        if not hasattr(self, "remote_indicator"):
+            return
+        st = (status or DeviceStatus.DISABLED).upper()
+        if st == DeviceStatus.ONLINE:
+            text, color = "REMOTE  ● CONNECTED", COLORS["success"]
+        elif st == DeviceStatus.DEGRADED:
+            text, color = "REMOTE  ● DEGRADED", COLORS["warning"]
+        elif st == DeviceStatus.DISABLED:
+            text, color = "REMOTE  ○ DISABLED", COLORS["muted"]
+        else:
+            text, color = f"REMOTE  ○ {st}", COLORS["muted"]
+        try:
+            self.remote_indicator.configure(text=text, text_color=color)
+        except Exception:
+            pass
+        try:
+            on = bool(getattr(self.remote_agent, "enabled", False)) and st != DeviceStatus.DISABLED
+            self.remote_toggle_btn.configure(
+                text="REMOTE CONTROL ON" if on else "REMOTE CONTROL OFF",
+                fg_color=COLORS["accent"] if on else COLORS["panel_alt"],
+            )
+        except Exception:
+            pass
+
+    def _toggle_remote_control(self) -> None:
+        """Kill switch locale — non dipende dal cloud."""
+        currently = bool(getattr(self.remote_agent, "enabled", False))
+        new_state = not currently
+        if new_state:
+            if not messagebox.askyesno(
+                APP_NAME,
+                "Attivare REMOTE CONTROL?\n\n"
+                "L'agent si collegherà in uscita al backend (modalità "
+                f"{self.remote_config.mode}).\n"
+                "Di default i comandi operativi restano sotto kill switch locale.",
+            ):
+                return
+        try:
+            self.remote_agent.set_enabled(new_state)
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, f"Remote Agent: {exc}")
+            return
+        self._update_remote_indicator(
+            self.remote_agent.status
+            if new_state
+            else DeviceStatus.DISABLED
+        )
+        self.append_activity(
+            f"REMOTE CONTROL {'ON' if new_state else 'OFF'} "
+            f"(device={self.remote_config.device_id}, mode={self.remote_config.mode})"
+        )
+
     # ================================================================== lifecycle
     def _post_init(self) -> None:
         self.append_activity(f"{APP_NAME} avviata — {PRODUCT_FULL_NAME}")
@@ -1540,6 +1629,21 @@ class MainWindow(ctk.CTk):
             self._refresh_vision_views()
         except Exception:
             pass
+        # Remote: start() rispetta VISION_REMOTE_ENABLED (default false → DISABLED)
+        try:
+            started = self.remote_agent.start()
+            self._update_remote_indicator(
+                self.remote_agent.status
+                if started
+                else DeviceStatus.DISABLED
+            )
+            if not started:
+                self.append_activity(
+                    f"Remote Agent OFF (device {self.remote_config.device_id})"
+                )
+        except Exception as exc:
+            logger.warning("Remote Agent non avviato: %s", exc)
+            self._update_remote_indicator(DeviceStatus.DISABLED)
         self.refresh_history()
         self.refresh_print_queue()
         self.refresh_mail_register()
@@ -1575,6 +1679,11 @@ class MainWindow(ctk.CTk):
         try:
             if hasattr(self, "vision"):
                 self.vision.stop()
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "remote_agent"):
+                self.remote_agent.stop()
         except Exception:
             pass
         try:

@@ -39,7 +39,13 @@ desktop.ini
 # Secrets — never commit credentials
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 credentials.json
 secrets.json
+
+# Remote agent local store
+data/vision_remote.db
+data/vision_remote.db-*
+logs/vision_remote.log*
