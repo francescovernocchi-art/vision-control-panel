@@ -28,7 +28,9 @@ import { usePwaInstall } from "@/hooks/usePwaInstall";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { logAudit, useDevices, useNotifications, useVisionRealtime } from "@/lib/vision-data";
+import { useBootstrap } from "@/lib/vision-bootstrap";
 import { isDeviceOnline } from "@/lib/vision";
+
 
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -63,7 +65,9 @@ export function AppShell({
   const { roles } = useRoles();
   const { data: profile } = useProfile();
   const { canInstall, install } = usePwaInstall();
+  const bootstrap = useBootstrap();
   const [menuOpen, setMenuOpen] = useState(false);
+
 
   const realtime = useVisionRealtime([
     "devices",
@@ -201,6 +205,15 @@ export function AppShell({
 
             </div>
           </div>
+          {!bootstrap.loading && !bootstrap.configured && pathname !== "/setup" && (
+            <Link
+              to="/setup"
+              className="flex items-center gap-2 border-t border-accent/40 bg-accent/10 px-4 py-2 text-xs text-accent"
+            >
+              <ShieldCheck className="size-4 shrink-0" />
+              Configurazione iniziale non completata: seleziona l'email amministratore →
+            </Link>
+          )}
           {!online && (
             <div className="flex items-center gap-2 border-t border-destructive/40 bg-destructive/15 px-4 py-2 text-xs text-destructive">
               <WifiOff className="size-4 shrink-0" />
@@ -208,6 +221,7 @@ export function AppShell({
               disabilitati.
             </div>
           )}
+
         </header>
 
         <main className="flex-1 px-4 pt-4 pb-24 lg:pb-8">{children}</main>

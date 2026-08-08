@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_bootstrap: {
+        Row: {
+          admin_email: string | null
+          created_at: string
+          id: string
+          singleton: boolean
+          updated_at: string
+        }
+        Insert: {
+          admin_email?: string | null
+          created_at?: string
+          id?: string
+          singleton?: boolean
+          updated_at?: string
+        }
+        Update: {
+          admin_email?: string | null
+          created_at?: string
+          id?: string
+          singleton?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       approvals: {
         Row: {
           decided_at: string | null
@@ -594,6 +618,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_exists: { Args: never; Returns: boolean }
       can_operate: { Args: { _user_id: string }; Returns: boolean }
       has_role: {
         Args: {
