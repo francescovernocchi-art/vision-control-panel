@@ -23,12 +23,13 @@ from app.platform.health_registry import HealthRegistry
 from app.platform.service_registry import ServiceRegistry
 from app.platform.skill_registry import SkillRegistry
 from app.platform.status_normalizer import normalize_health_status
+from app.platform.supervisor_view import SupervisorPlatformView
 from utils.logger import get_logger
 from utils.paths import PRODUCT_NAME, config_dir, data_dir, logs_dir, project_root
 
 logger = get_logger("platform.bootstrap")
 
-PLATFORM_VERSION = "0.3.0-services-health"
+PLATFORM_VERSION = "0.4.0-supervisor-readonly"
 
 _CONTEXT: Optional[PlatformContext] = None
 
@@ -168,11 +169,21 @@ def bootstrap_platform(
     # --- Skill manifests statici (percorsi espliciti) ---
     _load_static_skills(ctx)
 
-    # --- Soft-DI consumer non critico (diagnostica) + fallback ---
-    ctx.last_diagnostics = run_platform_diagnostics(ctx)
+    # --- Supervisor read-only view (soft adapter, no command execution) ---
+    view = SupervisorPlatformView(ctx)
+    ctx.supervisor_view = view
+    if core is not None:
+        # Soft attach: VisionCore osserva Platform senza dipendenza obbligatoria
+        try:
+            setattr(core, "platform_view", view)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Impossibile attach platform_view su Core: %s", exc)
 
     # --- Consistency (non blocca) ---
     ctx.last_consistency = run_consistency_check(ctx)
+
+    # --- Soft-DI consumer non critico (diagnostica) + fallback ---
+    ctx.last_diagnostics = run_platform_diagnostics(ctx)
 
     _CONTEXT = ctx
     logger.info(

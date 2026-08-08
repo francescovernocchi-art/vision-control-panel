@@ -18,12 +18,13 @@ class PlatformContext:
     services: ServiceRegistry
     skills: SkillRegistry = field(default_factory=SkillRegistry)
     version: str = "2.0-vision"
-    platform_version: str = "0.3.0-services-health"
+    platform_version: str = "0.4.0-supervisor-readonly"
     config: dict[str, Any] = field(default_factory=dict)
     core: Any = None
     health_bridge: Any = None
     last_consistency: Any = None
     last_diagnostics: Any = None
+    supervisor_view: Any = None
 
     # --- soft-DI / read-only helpers ---
 
@@ -38,6 +39,15 @@ class PlatformContext:
 
     def get_capability(self, module_id: str) -> Optional[Any]:
         return self.capability.get_module(module_id)
+
+    def get_supervisor_snapshot(self) -> Any:
+        """Snapshot read-only per Supervisor (DTO frozen). Soft se view assente."""
+        view = self.supervisor_view
+        if view is None:
+            from app.platform.supervisor_view import SupervisorPlatformView
+
+            view = SupervisorPlatformView(self)
+        return view.get_supervisor_snapshot()
 
     def get_platform_snapshot(self) -> dict[str, Any]:
         """Snapshot piattaforma v2 (nessun consumer operativo obbligatorio)."""
@@ -71,17 +81,16 @@ class PlatformContext:
         return self.get_platform_snapshot()
 
     def supervisor_readonly_view(self) -> dict[str, Any]:
-        """
-        Predisposizione read-only per futuro Supervisor.
-        NON usato da UI/avatar in questa fase.
-        """
-        return {
-            "skills": [s.to_dict() for s in self.skills.list_skills()],
-            "enabled_skills": [s.to_dict() for s in self.skills.get_enabled_skills()],
-            "health": self.health.get_health_snapshot(),
-            "services": [d.to_dict() for d in self.services.list_descriptors()],
-            "capabilities": {
-                "modules": [m.to_dict() for m in self.capability.list_modules()],
-                "commands": [c.id for c in self.capability.list_commands()],
-            },
-        }
+        """Compat dict + SupervisorSnapshot; preferire get_supervisor_snapshot()."""
+        snap = self.get_supervisor_snapshot()
+        d = snap.to_dict() if hasattr(snap, "to_dict") else {}
+        # chiavi legacy (test / predisposizione precedente)
+        d["health"] = (
+            self.health.get_health_snapshot()
+            if self.health is not None and hasattr(self.health, "get_health_snapshot")
+            else {"overall_status": "UNKNOWN", "components": []}
+        )
+        d["enabled_skills"] = [
+            s.to_dict() for s in (snap.skills or ()) if getattr(s, "enabled", False)
+        ]
+        return d

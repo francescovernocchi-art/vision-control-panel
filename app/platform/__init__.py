@@ -14,6 +14,15 @@ from app.platform.descriptors import (
     ServiceDescriptor,
 )
 from app.platform.skill_descriptor import SkillDescriptor
+from app.platform.supervisor_view import (
+    SupervisorCapabilityView,
+    SupervisorHealthView,
+    SupervisorPlatformView,
+    SupervisorServiceView,
+    SupervisorSkillView,
+    SupervisorSnapshot,
+    SupervisorWarning,
+)
 
 __all__ = [
     "PlatformContext",
@@ -23,6 +32,13 @@ __all__ = [
     "HealthReport",
     "ServiceDescriptor",
     "SkillDescriptor",
+    "SupervisorPlatformView",
+    "SupervisorSnapshot",
+    "SupervisorSkillView",
+    "SupervisorHealthView",
+    "SupervisorServiceView",
+    "SupervisorCapabilityView",
+    "SupervisorWarning",
     "bootstrap_platform",
     "get_platform_context",
 ]
