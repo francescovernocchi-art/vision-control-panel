@@ -6,15 +6,12 @@
 
 import { supabase } from "@/integrations/supabase/client";
 
-export const DEFAULT_DEVICE_ID =
-  import.meta.env["VITE_DEVICE_ID"] || "VIS-TARANTO-01";
+export const DEFAULT_DEVICE_ID = import.meta.env["VITE_DEVICE_ID"] || "VIS-TARANTO-01";
 
 export const GET_STATUS_TIMEOUT_MS = Number(
   import.meta.env["VITE_GET_STATUS_TIMEOUT_MS"] || 30_000,
 );
-export const GET_STATUS_POLL_MS = Number(
-  import.meta.env["VITE_POLL_INTERVAL_MS"] || 4_000,
-);
+export const GET_STATUS_POLL_MS = Number(import.meta.env["VITE_POLL_INTERVAL_MS"] || 4_000);
 export const OFFLINE_THRESHOLD_SECONDS = Number(
   import.meta.env["VITE_OFFLINE_THRESHOLD_SECONDS"] || 60,
 );
@@ -89,13 +86,7 @@ export type GetStatusResult = {
 };
 
 export type CommandStatus =
-  | "PENDING"
-  | "ACKNOWLEDGED"
-  | "EXECUTING"
-  | "COMPLETED"
-  | "FAILED"
-  | "REJECTED"
-  | string;
+  "PENDING" | "ACKNOWLEDGED" | "EXECUTING" | "COMPLETED" | "FAILED" | "REJECTED" | string;
 
 export type CommandRow = {
   id: string;
@@ -115,8 +106,7 @@ export type CommandRow = {
 export function isCloudConfigured(): boolean {
   const url = import.meta.env["VITE_SUPABASE_URL"];
   const key =
-    import.meta.env["VITE_SUPABASE_ANON_KEY"] ||
-    import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"];
+    import.meta.env["VITE_SUPABASE_ANON_KEY"] || import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"];
   return Boolean(url && key);
 }
 
@@ -144,17 +134,19 @@ export function normalizeCommandRow(raw: Record<string, unknown> | null): Comman
     started_at: (raw["started_at"] as string | null) ?? null,
     finished_at: (raw["finished_at"] as string | null) ?? null,
     executed_at: (raw["executed_at"] as string | null) ?? null,
-    target_device_id:
-      raw["target_device_id"] != null ? String(raw["target_device_id"]) : null,
+    target_device_id: raw["target_device_id"] != null ? String(raw["target_device_id"]) : null,
   };
 }
 
 export async function createGetStatusCommand(
   deviceId: string = DEFAULT_DEVICE_ID,
 ): Promise<CommandRow> {
-  const { data, error } = await supabase.rpc("create_get_status_command" as never, {
-    p_device_id: deviceId,
-  } as never);
+  const { data, error } = await supabase.rpc(
+    "create_get_status_command" as never,
+    {
+      p_device_id: deviceId,
+    } as never,
+  );
   if (error) throw error;
   const row = normalizeCommandRow(data as Record<string, unknown>);
   if (!row) throw new Error("create_get_status_command: empty response");
@@ -196,10 +188,7 @@ export function waitForGetStatusResult(
     clearTimeoutFn?: typeof clearTimeout;
     setIntervalFn?: typeof setInterval;
     clearIntervalFn?: typeof clearInterval;
-    subscribe?: (
-      commandId: string,
-      onRow: (row: CommandRow) => void,
-    ) => () => void;
+    subscribe?: (commandId: string, onRow: (row: CommandRow) => void) => () => void;
   },
 ): Promise<WaitOutcome> {
   const timeoutMs = opts?.timeoutMs ?? GET_STATUS_TIMEOUT_MS;
@@ -213,15 +202,17 @@ export function waitForGetStatusResult(
   return new Promise((resolve) => {
     let settled = false;
     let unsub: (() => void) | null = null;
-    let pollTimer: ReturnType<typeof setInterval> | undefined;
-    let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
     let channel: { topic?: string } | null = null;
+    const timers: {
+      poll?: ReturnType<typeof setInterval>;
+      timeout?: ReturnType<typeof setTimeout>;
+    } = {};
 
     const finish = (value: WaitOutcome) => {
       if (settled) return;
       settled = true;
-      if (pollTimer) clearIntervalFn(pollTimer);
-      if (timeoutTimer) clearTimeoutFn(timeoutTimer);
+      if (timers.poll) clearIntervalFn(timers.poll);
+      if (timers.timeout) clearTimeoutFn(timers.timeout);
       if (unsub) unsub();
       if (channel) void supabase.removeChannel(channel as never);
       resolve(value);
@@ -255,17 +246,18 @@ export function waitForGetStatusResult(
             table: "commands",
             filter: `id=eq.${commandId}`,
           },
-          (payload) =>
-            inspect(normalizeCommandRow(payload.new as Record<string, unknown>)),
+          (payload) => inspect(normalizeCommandRow(payload.new as Record<string, unknown>)),
         )
         .subscribe();
     }
 
-    pollTimer = setIntervalFn(() => {
-      void fetchFn(commandId).then(inspect).catch(() => undefined);
+    timers.poll = setIntervalFn(() => {
+      void fetchFn(commandId)
+        .then(inspect)
+        .catch(() => undefined);
     }, pollMs);
 
-    timeoutTimer = setTimeoutFn(() => {
+    timers.timeout = setTimeoutFn(() => {
       finish({
         ok: false,
         reason: "timeout",
@@ -273,7 +265,9 @@ export function waitForGetStatusResult(
       });
     }, timeoutMs);
 
-    void fetchFn(commandId).then(inspect).catch(() => undefined);
+    void fetchFn(commandId)
+      .then(inspect)
+      .catch(() => undefined);
   });
 }
 
@@ -292,19 +286,13 @@ export function uniqueWarnings(
   return out;
 }
 
-export function moduleFromResult(
-  result: GetStatusResult | null | undefined,
-  moduleId: string,
-) {
+export function moduleFromResult(result: GetStatusResult | null | undefined, moduleId: string) {
   return result?.modules?.find(
     (m) => m.module_id === moduleId || m.module_id === moduleId.replace("_", ""),
   );
 }
 
-export function serviceFromResult(
-  result: GetStatusResult | null | undefined,
-  serviceId: string,
-) {
+export function serviceFromResult(result: GetStatusResult | null | undefined, serviceId: string) {
   return result?.services?.find((s) => s.service_id === serviceId);
 }
 
@@ -327,8 +315,7 @@ export function derivedAgentStatus(
   nowMs: number = Date.now(),
 ): string {
   if (device?.status === "DISABLED") return "DISABLED";
-  const threshold =
-    device?.heartbeat_threshold_seconds ?? OFFLINE_THRESHOLD_SECONDS;
+  const threshold = device?.heartbeat_threshold_seconds ?? OFFLINE_THRESHOLD_SECONDS;
   if (isAgentOffline(device?.last_seen_at, threshold, nowMs)) {
     return "OFFLINE";
   }
@@ -344,8 +331,6 @@ export function pickLatestGetStatusCommand<
   T extends { target_device_id?: string | null; command_type?: string },
 >(commands: T[], deviceId: string): T | null {
   return (
-    commands.find(
-      (c) => c.target_device_id === deviceId && c.command_type === "GET_STATUS",
-    ) ?? null
+    commands.find((c) => c.target_device_id === deviceId && c.command_type === "GET_STATUS") ?? null
   );
 }

@@ -89,10 +89,7 @@ function DispositiviPage() {
     <AppShell title="Dispositivi" subtitle="PC / Agent VIS•ION — GET_STATUS only">
       <div className="grid gap-3 md:grid-cols-2">
         {devices.map((d: any) => {
-          const online = isDeviceOnline(
-            d.last_seen_at,
-            d.heartbeat_threshold_seconds ?? 60,
-          );
+          const online = isDeviceOnline(d.last_seen_at, d.heartbeat_threshold_seconds ?? 60);
           const effective = d.status === "DISABLED" ? "DISABLED" : online ? d.status : "OFFLINE";
           const currentJob = jobs.find((j: any) => j.id === d.current_job_id);
           const lastStatus = pickLatestGetStatusCommand(commands, d.id);

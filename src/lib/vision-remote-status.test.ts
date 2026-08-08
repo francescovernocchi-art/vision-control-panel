@@ -70,12 +70,8 @@ describe("commands disabled", () => {
 describe("agent offline", () => {
   it("is offline when last_seen older than 60s", () => {
     const now = Date.parse("2026-08-08T12:00:00Z");
-    expect(
-      isAgentOffline("2026-08-08T11:58:00Z", 60, now),
-    ).toBe(true);
-    expect(
-      isAgentOffline("2026-08-08T11:59:30Z", 60, now),
-    ).toBe(false);
+    expect(isAgentOffline("2026-08-08T11:58:00Z", 60, now)).toBe(true);
+    expect(isAgentOffline("2026-08-08T11:59:30Z", 60, now)).toBe(false);
     expect(isAgentOffline(null, 60, now)).toBe(true);
   });
 
@@ -195,8 +191,7 @@ describe("waitForGetStatusResult", () => {
       timeoutMs: 2_000,
       pollMs: 10,
       subscribe: () => () => undefined,
-      fetchFn: async () =>
-        baseCmd({ status: "FAILED", error: "agent boom" }),
+      fetchFn: async () => baseCmd({ status: "FAILED", error: "agent boom" }),
     });
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) {
