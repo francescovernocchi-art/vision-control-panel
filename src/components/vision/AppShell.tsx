@@ -184,10 +184,21 @@ export function AppShell({
                 <span className="flex items-center gap-1.5 font-mono text-[0.6rem] tracking-widest">
                   <StatusDot status={online ? "ONLINE" : "OFFLINE"} /> CLOUD
                 </span>
+                <span
+                  className="flex items-center gap-1.5 font-mono text-[0.6rem] tracking-widest"
+                  title={
+                    realtime === "LIVE"
+                      ? "Aggiornamenti realtime attivi"
+                      : "Stream realtime non attivo: riconnessione in corso"
+                  }
+                >
+                  <StatusDot status={liveStatus} /> LIVE
+                </span>
                 <span className="flex items-center gap-1.5 font-mono text-[0.6rem] tracking-widest">
                   <StatusDot status={anyDeviceOnline ? "ONLINE" : "OFFLINE"} /> AGENT
                 </span>
               </div>
+
             </div>
           </div>
           {!online && (
