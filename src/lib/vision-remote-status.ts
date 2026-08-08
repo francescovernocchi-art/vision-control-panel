@@ -338,3 +338,14 @@ export function derivedAgentStatus(
 export function isRemoteCommandEnabled(commandType: string): boolean {
   return REMOTE_COMMAND_ENABLED[commandType] === true;
 }
+
+/** Ultimo GET_STATUS per device (lista già ordinata per requested_at desc). */
+export function pickLatestGetStatusCommand<
+  T extends { target_device_id?: string | null; command_type?: string },
+>(commands: T[], deviceId: string): T | null {
+  return (
+    commands.find(
+      (c) => c.target_device_id === deviceId && c.command_type === "GET_STATUS",
+    ) ?? null
+  );
+}

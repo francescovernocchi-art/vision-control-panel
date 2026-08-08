@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/vision/AppShell";
@@ -9,6 +10,7 @@ import { formatDateTime, formatRelative, isDeviceOnline } from "@/lib/vision";
 import { useCommands, useDevices, useJobs, useModules } from "@/lib/vision-data";
 import {
   createGetStatusCommand,
+  pickLatestGetStatusCommand,
   waitForGetStatusResult,
 } from "@/lib/vision-remote-status";
 
@@ -76,6 +78,7 @@ function StatusReadout({ command }: { command: any }) {
 }
 
 function DispositiviPage() {
+  const queryClient = useQueryClient();
   const { data: devices = [] } = useDevices();
   const { data: modules = [] } = useModules();
   const { data: jobs = [] } = useJobs();
@@ -92,9 +95,13 @@ function DispositiviPage() {
           );
           const effective = d.status === "DISABLED" ? "DISABLED" : online ? d.status : "OFFLINE";
           const currentJob = jobs.find((j: any) => j.id === d.current_job_id);
-          const lastStatus = commands.find(
-            (c: any) => c.target_device_id === d.id && c.command_type === "GET_STATUS",
-          );
+          const lastStatus = pickLatestGetStatusCommand(commands, d.id);
+          const disabledReason = !canOperate
+            ? "Il tuo ruolo non consente l'invio di comandi."
+            : !online
+              ? `AGENT OFFLINE — ${d.code} non è raggiungibile.`
+              : undefined;
+
           return (
             <div key={d.id} className="hud-panel space-y-3 p-4">
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
@@ -144,19 +151,24 @@ function DispositiviPage() {
 
               <CommandButton
                 label="Richiedi stato"
-                disabled={!canOperate}
-                disabledReason="Il tuo ruolo non consente l'invio di comandi."
+                disabled={!canOperate || !online}
+                disabledReason={disabledReason}
                 onConfirm={async () => {
                   try {
                     const cmd = await createGetStatusCommand(d.code);
                     const wait = await waitForGetStatusResult(cmd.id);
+                    void queryClient.invalidateQueries({ queryKey: ["commands"] });
+                    void queryClient.invalidateQueries({ queryKey: ["devices"] });
                     if (!wait.ok) {
                       toast.error(wait.message);
                     } else {
                       toast.success("Stato aggiornato", { description: d.code });
                     }
                   } catch (e) {
-                    toast.error("COMANDO FALLITO", { description: (e as Error).message });
+                    void queryClient.invalidateQueries({ queryKey: ["commands"] });
+                    toast.error("COMANDO FALLITO", {
+                      description: (e as Error).message,
+                    });
                   }
                 }}
               />

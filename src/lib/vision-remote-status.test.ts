@@ -8,6 +8,7 @@ import {
   isCloudConfigured,
   isRemoteCommandEnabled,
   normalizeCommandRow,
+  pickLatestGetStatusCommand,
   uniqueWarnings,
   waitForGetStatusResult,
   type CommandRow,
@@ -240,6 +241,78 @@ describe("create_get_status_command contract shape", () => {
     const rpcArgs = { p_device_id: "VIS-TARANTO-01" };
     expect(rpcArgs).toHaveProperty("p_device_id", "VIS-TARANTO-01");
     expect(rpcArgs).not.toHaveProperty("p_device_code");
+  });
+});
+
+describe("invalid / empty responses", () => {
+  it("normalizeCommandRow rejects empty payload", () => {
+    expect(normalizeCommandRow(null)).toBeNull();
+    expect(normalizeCommandRow({})).toBeNull();
+    expect(normalizeCommandRow({ status: "COMPLETED" })).toBeNull();
+  });
+});
+
+describe("wait settles once (no double resolve)", () => {
+  it("ignores late FAILED after COMPLETED", async () => {
+    let onRow: ((row: CommandRow) => void) | undefined;
+    const outcomeP = waitForGetStatusResult("cmd-1", {
+      timeoutMs: 2_000,
+      pollMs: 60_000,
+      fetchFn: async () => basePending(),
+      subscribe: (_id, cb) => {
+        onRow = cb;
+        return () => undefined;
+      },
+    });
+
+    onRow?.(
+      basePending({
+        status: "COMPLETED",
+        result: { core_status: "ONLINE" },
+      }),
+    );
+    onRow?.(basePending({ status: "FAILED", error: "late" }));
+
+    const outcome = await outcomeP;
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) expect(outcome.result?.core_status).toBe("ONLINE");
+  });
+});
+
+function basePending(over: Partial<CommandRow> = {}): CommandRow {
+  return {
+    id: "cmd-1",
+    command_type: "GET_STATUS",
+    status: "PENDING",
+    result: null,
+    error: null,
+    requested_at: "2026-01-01T00:00:00Z",
+    ...over,
+  };
+}
+
+describe("pickLatestGetStatusCommand (UI status render)", () => {
+  it("picks first GET_STATUS for device in desc-ordered list", () => {
+    const picked = pickLatestGetStatusCommand(
+      [
+        {
+          target_device_id: "dev-1",
+          command_type: "GET_STATUS",
+          status: "COMPLETED",
+        },
+        {
+          target_device_id: "dev-1",
+          command_type: "GET_STATUS",
+          status: "FAILED",
+        },
+      ],
+      "dev-1",
+    );
+    expect(picked).toMatchObject({ status: "COMPLETED" });
+  });
+
+  it("returns null when missing", () => {
+    expect(pickLatestGetStatusCommand([], "dev-1")).toBeNull();
   });
 });
 
