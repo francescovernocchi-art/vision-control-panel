@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { supabase } from "@/integrations/supabase/client";
 import type { AppRole, CommandType } from "@/lib/vision";
@@ -79,33 +79,65 @@ export function useJobEvents(jobId: string) {
   });
 }
 
-/** Subscribe to realtime changes and refresh the matching caches. */
-export function useVisionRealtime(tables: string[]) {
+export type RealtimeState = "CONNECTING" | "LIVE" | "ERROR";
+
+/**
+ * Subscribe to realtime changes and refresh the matching caches.
+ * Returns the channel state so the UI can show whether the stream is live.
+ */
+export function useVisionRealtime(tables: string[]): RealtimeState {
   const queryClient = useQueryClient();
   const key = tables.join(",");
+  const [state, setState] = useState<RealtimeState>("CONNECTING");
+
   useEffect(() => {
+    const list = key.split(",");
+    const refresh = (table: string) => {
+      void queryClient.invalidateQueries({ queryKey: [table] });
+      if (table === "vision_jobs") {
+        void queryClient.invalidateQueries({ queryKey: ["vision_job"] });
+      }
+      if (table === "job_events") {
+        void queryClient.invalidateQueries({ queryKey: ["job_events"] });
+      }
+    };
+
     const channel = supabase.channel(`vision-${key}`);
-    for (const table of key.split(",")) {
-      channel.on(
-        "postgres_changes",
-        { event: "*", schema: "public", table },
-        () => {
-          void queryClient.invalidateQueries({ queryKey: [table] });
-          if (table === "vision_jobs") {
-            void queryClient.invalidateQueries({ queryKey: ["vision_job"] });
-          }
-          if (table === "job_events") {
-            void queryClient.invalidateQueries({ queryKey: ["job_events"] });
-          }
-        },
+    for (const table of list) {
+      channel.on("postgres_changes", { event: "*", schema: "public", table }, () =>
+        refresh(table),
       );
     }
-    channel.subscribe();
+    channel.subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        setState("LIVE");
+        // Resync after (re)connection: events missed while offline are not replayed.
+        for (const table of list) refresh(table);
+      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        setState("ERROR");
+      }
+    });
+
+    // Devices go OFFLINE by elapsed heartbeat time, which emits no realtime event.
+    const tick = window.setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: ["devices"] });
+    }, 30_000);
+
+    const onFocus = () => {
+      for (const table of list) refresh(table);
+    };
+    window.addEventListener("focus", onFocus);
+
     return () => {
+      window.clearInterval(tick);
+      window.removeEventListener("focus", onFocus);
       void supabase.removeChannel(channel);
     };
   }, [key, queryClient]);
+
+  return state;
 }
+
 
 export async function logAudit(entry: {
   action: string;
