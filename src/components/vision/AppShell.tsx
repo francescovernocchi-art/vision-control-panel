@@ -65,7 +65,7 @@ export function AppShell({
   const { canInstall, install } = usePwaInstall();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  useVisionRealtime([
+  const realtime = useVisionRealtime([
     "devices",
     "modules",
     "vision_jobs",
@@ -74,6 +74,8 @@ export function AppShell({
     "notifications",
     "approvals",
   ]);
+  const liveStatus = !online ? "OFFLINE" : realtime === "LIVE" ? "ONLINE" : "PENDING";
+
 
   const { data: devices = [] } = useDevices();
   const { data: notifications = [] } = useNotifications();
