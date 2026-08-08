@@ -1,0 +1,61 @@
+"""Stati UI e stati coda job JARVIS."""
+
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class JarvisState(StrEnum):
+    """Stati operativi visibili in UI."""
+
+    OFFLINE = "OFFLINE"
+    IN_ATTESA = "IN ATTESA"
+    CONTROLLO_MAIL = "CONTROLLO MAIL"
+    NUOVA_MAIL = "NUOVA MAIL RILEVATA"
+    ANALISI_MAIL = "ANALISI MAIL"
+    CONTRATTO_RICONOSCIUTO = "CONTRATTO RICONOSCIUTO"
+    ACCESSO_ENISPACE = "ACCESSO ENISPACE"
+    RICERCA_DOCUMENTI = "RICERCA DOCUMENTI"
+    DOWNLOAD = "DOWNLOAD"
+    PREPARAZIONE_STAMPA = "PREPARAZIONE STAMPA"
+    STAMPA = "STAMPA"
+    VERIFICA = "VERIFICA"
+    COMPLETATO = "COMPLETATO"
+    INTERVENTO_RICHIESTO = "INTERVENTO RICHIESTO"
+    ERRORE = "ERRORE"
+
+
+class JobStatus(StrEnum):
+    """Stati persistenti della coda."""
+
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    NEEDS_ATTENTION = "NEEDS_ATTENTION"
+
+
+class JobOutcome(StrEnum):
+    COMPLETATA = "COMPLETATA"
+    PARZIALE = "PARZIALE"
+    INTERVENTO_RICHIESTO = "INTERVENTO RICHIESTO"
+    ERRORE = "ERRORE"
+    SIMULATA = "SIMULATA"
+
+
+class LogLevel(StrEnum):
+    INFO = "INFO"
+    SUCCESS = "SUCCESS"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+
+
+class NotifyEvent(StrEnum):
+    JOB_COMPLETED = "JOB_COMPLETED"
+    JOB_FAILED = "JOB_FAILED"
+    NEEDS_ATTENTION = "NEEDS_ATTENTION"
+    NEW_JOB = "NEW_JOB"
+
+
+# Retry transienti: attese progressive (secondi)
+RETRY_DELAYS_SEC = (10, 30, 60)

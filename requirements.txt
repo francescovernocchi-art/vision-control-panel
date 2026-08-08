@@ -1,0 +1,7 @@
+pywin32>=308
+customtkinter>=5.2.2
+playwright>=1.49.0
+keyring>=25.5.0
+Pillow>=10.4.0
+PyMuPDF>=1.24.0
+pytest>=8.0.0

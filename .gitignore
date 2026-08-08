@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# PyInstaller
+*.spec
+*.manifest
+
+# Application data (local runtime)
+data/enispace.db
+data/enispace.db-*
+data/browser-profile/**
+!data/browser-profile/.gitkeep
+logs/*.log
+downloads/**
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Secrets — never commit credentials
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+secrets.json
