@@ -22,6 +22,7 @@ import { Route as AuthenticatedLavorazioniRouteImport } from './routes/_authenti
 import { Route as AuthenticatedModuliRouteImport } from './routes/_authenticated/moduli'
 import { Route as AuthenticatedNotificheRouteImport } from './routes/_authenticated/notifiche'
 import { Route as AuthenticatedProfiloRouteImport } from './routes/_authenticated/profilo'
+import { Route as AuthenticatedSetupRouteImport } from './routes/_authenticated/setup'
 import { Route as AuthenticatedSupervisorRouteImport } from './routes/_authenticated/supervisor'
 import { Route as AuthenticatedJobsIdRouteImport } from './routes/_authenticated/jobs.$id'
 import { Route as AuthenticatedModuliIndexRouteImport } from './routes/_authenticated/moduli.index'
@@ -96,6 +97,11 @@ const AuthenticatedProfiloRoute = AuthenticatedProfiloRouteImport.update({
   path: '/profilo',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSetupRoute = AuthenticatedSetupRouteImport.update({
+  id: '/setup',
+  path: '/setup',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedSupervisorRoute = AuthenticatedSupervisorRouteImport.update({
   id: '/supervisor',
   path: '/supervisor',
@@ -138,6 +144,7 @@ export interface FileRoutesByFullPath {
   '/moduli': typeof AuthenticatedModuliRouteWithChildren
   '/notifiche': typeof AuthenticatedNotificheRoute
   '/profilo': typeof AuthenticatedProfiloRoute
+  '/setup': typeof AuthenticatedSetupRoute
   '/supervisor': typeof AuthenticatedSupervisorRoute
   '/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/moduli/enispace': typeof AuthenticatedModuliEnispaceRoute
@@ -156,6 +163,7 @@ export interface FileRoutesByTo {
   '/lavorazioni': typeof AuthenticatedLavorazioniRoute
   '/notifiche': typeof AuthenticatedNotificheRoute
   '/profilo': typeof AuthenticatedProfiloRoute
+  '/setup': typeof AuthenticatedSetupRoute
   '/supervisor': typeof AuthenticatedSupervisorRoute
   '/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/moduli/enispace': typeof AuthenticatedModuliEnispaceRoute
@@ -177,6 +185,7 @@ export interface FileRoutesById {
   '/_authenticated/moduli': typeof AuthenticatedModuliRouteWithChildren
   '/_authenticated/notifiche': typeof AuthenticatedNotificheRoute
   '/_authenticated/profilo': typeof AuthenticatedProfiloRoute
+  '/_authenticated/setup': typeof AuthenticatedSetupRoute
   '/_authenticated/supervisor': typeof AuthenticatedSupervisorRoute
   '/_authenticated/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/_authenticated/moduli/enispace': typeof AuthenticatedModuliEnispaceRoute
@@ -198,6 +207,7 @@ export interface FileRouteTypes {
     | '/moduli'
     | '/notifiche'
     | '/profilo'
+    | '/setup'
     | '/supervisor'
     | '/jobs/$id'
     | '/moduli/enispace'
@@ -216,6 +226,7 @@ export interface FileRouteTypes {
     | '/lavorazioni'
     | '/notifiche'
     | '/profilo'
+    | '/setup'
     | '/supervisor'
     | '/jobs/$id'
     | '/moduli/enispace'
@@ -236,6 +247,7 @@ export interface FileRouteTypes {
     | '/_authenticated/moduli'
     | '/_authenticated/notifiche'
     | '/_authenticated/profilo'
+    | '/_authenticated/setup'
     | '/_authenticated/supervisor'
     | '/_authenticated/jobs/$id'
     | '/_authenticated/moduli/enispace'
@@ -343,6 +355,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProfiloRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/setup': {
+      id: '/_authenticated/setup'
+      path: '/setup'
+      fullPath: '/setup'
+      preLoaderRoute: typeof AuthenticatedSetupRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/supervisor': {
       id: '/_authenticated/supervisor'
       path: '/supervisor'
@@ -407,6 +426,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedModuliRoute: typeof AuthenticatedModuliRouteWithChildren
   AuthenticatedNotificheRoute: typeof AuthenticatedNotificheRoute
   AuthenticatedProfiloRoute: typeof AuthenticatedProfiloRoute
+  AuthenticatedSetupRoute: typeof AuthenticatedSetupRoute
   AuthenticatedSupervisorRoute: typeof AuthenticatedSupervisorRoute
   AuthenticatedJobsIdRoute: typeof AuthenticatedJobsIdRoute
 }
@@ -421,6 +441,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedModuliRoute: AuthenticatedModuliRouteWithChildren,
   AuthenticatedNotificheRoute: AuthenticatedNotificheRoute,
   AuthenticatedProfiloRoute: AuthenticatedProfiloRoute,
+  AuthenticatedSetupRoute: AuthenticatedSetupRoute,
   AuthenticatedSupervisorRoute: AuthenticatedSupervisorRoute,
   AuthenticatedJobsIdRoute: AuthenticatedJobsIdRoute,
 }

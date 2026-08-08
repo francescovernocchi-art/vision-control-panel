@@ -201,6 +201,15 @@ export function AppShell({
 
             </div>
           </div>
+          {!bootstrap.loading && !bootstrap.configured && pathname !== "/setup" && (
+            <Link
+              to="/setup"
+              className="flex items-center gap-2 border-t border-accent/40 bg-accent/10 px-4 py-2 text-xs text-accent"
+            >
+              <ShieldCheck className="size-4 shrink-0" />
+              Configurazione iniziale non completata: seleziona l'email amministratore →
+            </Link>
+          )}
           {!online && (
             <div className="flex items-center gap-2 border-t border-destructive/40 bg-destructive/15 px-4 py-2 text-xs text-destructive">
               <WifiOff className="size-4 shrink-0" />
@@ -208,6 +217,7 @@ export function AppShell({
               disabilitati.
             </div>
           )}
+
         </header>
 
         <main className="flex-1 px-4 pt-4 pb-24 lg:pb-8">{children}</main>
