@@ -17,6 +17,8 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedModuliRouteImport } from './routes/_authenticated/moduli'
 import { Route as AuthenticatedSupervisorRouteImport } from './routes/_authenticated/supervisor'
 import { Route as AuthenticatedModuliIndexRouteImport } from './routes/_authenticated/moduli.index'
+import { Route as AuthenticatedModuliEnispaceRouteImport } from './routes/_authenticated/moduli.enispace'
+import { Route as AuthenticatedModuliTrasportoMoneteRouteImport } from './routes/_authenticated/moduli.trasporto-monete'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -58,6 +60,18 @@ const AuthenticatedModuliIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedModuliRoute,
   } as any)
+const AuthenticatedModuliEnispaceRoute =
+  AuthenticatedModuliEnispaceRouteImport.update({
+    id: '/enispace',
+    path: '/enispace',
+    getParentRoute: () => AuthenticatedModuliRoute,
+  } as any)
+const AuthenticatedModuliTrasportoMoneteRoute =
+  AuthenticatedModuliTrasportoMoneteRouteImport.update({
+    id: '/trasporto-monete',
+    path: '/trasporto-monete',
+    getParentRoute: () => AuthenticatedModuliRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -66,6 +80,8 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/moduli': typeof AuthenticatedModuliRouteWithChildren
   '/supervisor': typeof AuthenticatedSupervisorRoute
+  '/moduli/enispace': typeof AuthenticatedModuliEnispaceRoute
+  '/moduli/trasporto-monete': typeof AuthenticatedModuliTrasportoMoneteRoute
   '/moduli/': typeof AuthenticatedModuliIndexRoute
 }
 export interface FileRoutesByTo {
@@ -74,6 +90,8 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/supervisor': typeof AuthenticatedSupervisorRoute
+  '/moduli/enispace': typeof AuthenticatedModuliEnispaceRoute
+  '/moduli/trasporto-monete': typeof AuthenticatedModuliTrasportoMoneteRoute
   '/moduli': typeof AuthenticatedModuliIndexRoute
 }
 export interface FileRoutesById {
@@ -85,6 +103,8 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/moduli': typeof AuthenticatedModuliRouteWithChildren
   '/_authenticated/supervisor': typeof AuthenticatedSupervisorRoute
+  '/_authenticated/moduli/enispace': typeof AuthenticatedModuliEnispaceRoute
+  '/_authenticated/moduli/trasporto-monete': typeof AuthenticatedModuliTrasportoMoneteRoute
   '/_authenticated/moduli/': typeof AuthenticatedModuliIndexRoute
 }
 export interface FileRouteTypes {
@@ -96,10 +116,19 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/moduli'
     | '/supervisor'
+    | '/moduli/enispace'
+    | '/moduli/trasporto-monete'
     | '/moduli/'
   fileRoutesByTo: FileRoutesByTo
   to:
-    '/' | '/auth' | '/reset-password' | '/dashboard' | '/supervisor' | '/moduli'
+    | '/'
+    | '/auth'
+    | '/reset-password'
+    | '/dashboard'
+    | '/supervisor'
+    | '/moduli/enispace'
+    | '/moduli/trasporto-monete'
+    | '/moduli'
   id:
     | '__root__'
     | '/'
@@ -109,6 +138,8 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/moduli'
     | '/_authenticated/supervisor'
+    | '/_authenticated/moduli/enispace'
+    | '/_authenticated/moduli/trasporto-monete'
     | '/_authenticated/moduli/'
   fileRoutesById: FileRoutesById
 }
@@ -177,14 +208,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedModuliIndexRouteImport
       parentRoute: typeof AuthenticatedModuliRoute
     }
+    '/_authenticated/moduli/enispace': {
+      id: '/_authenticated/moduli/enispace'
+      path: '/enispace'
+      fullPath: '/moduli/enispace'
+      preLoaderRoute: typeof AuthenticatedModuliEnispaceRouteImport
+      parentRoute: typeof AuthenticatedModuliRoute
+    }
+    '/_authenticated/moduli/trasporto-monete': {
+      id: '/_authenticated/moduli/trasporto-monete'
+      path: '/trasporto-monete'
+      fullPath: '/moduli/trasporto-monete'
+      preLoaderRoute: typeof AuthenticatedModuliTrasportoMoneteRouteImport
+      parentRoute: typeof AuthenticatedModuliRoute
+    }
   }
 }
 
 interface AuthenticatedModuliRouteChildren {
+  AuthenticatedModuliEnispaceRoute: typeof AuthenticatedModuliEnispaceRoute
+  AuthenticatedModuliTrasportoMoneteRoute: typeof AuthenticatedModuliTrasportoMoneteRoute
   AuthenticatedModuliIndexRoute: typeof AuthenticatedModuliIndexRoute
 }
 
 const AuthenticatedModuliRouteChildren: AuthenticatedModuliRouteChildren = {
+  AuthenticatedModuliEnispaceRoute: AuthenticatedModuliEnispaceRoute,
+  AuthenticatedModuliTrasportoMoneteRoute:
+    AuthenticatedModuliTrasportoMoneteRoute,
   AuthenticatedModuliIndexRoute: AuthenticatedModuliIndexRoute,
 }
 

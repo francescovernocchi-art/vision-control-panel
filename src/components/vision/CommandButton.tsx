@@ -29,15 +29,15 @@ export function CommandButton({
   className,
 }: {
   label: string;
-  description?: string;
+  description?: string | undefined;
   onConfirm: () => Promise<void> | void;
   sensitive?: boolean;
   disabled?: boolean;
-  disabledReason?: string;
+  disabledReason?: string | undefined;
   variant?: "default" | "secondary" | "destructive" | "outline" | "ghost";
   size?: "sm" | "default" | "lg";
-  icon?: ReactNode;
-  className?: string;
+  icon?: ReactNode | undefined;
+  className?: string | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
