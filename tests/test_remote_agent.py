@@ -80,6 +80,77 @@ def test_check_enispace_mail_rejected_status_only(agent):
     assert out.result.get("code") == "REMOTE_OPERATION_NOT_ENABLED"
 
 
+def test_wake_deactivate_supervisor_thin_channel(agent, core):
+    """Thin channel: WAKE / DEACTIVATE ammessi; senza jarvis → SUPERVISOR_UNAVAILABLE."""
+    wake = agent.handle_command(
+        RemoteCommand.create(
+            command_type=CommandType.WAKE_SUPERVISOR,
+            target_device_id="VIS-TARANTO-01",
+            source="test",
+        )
+    )
+    # In test bootstrap jarvis può essere assente → FAILED con codice chiaro, non policy reject
+    assert wake.status in (CommandStatus.COMPLETED, CommandStatus.FAILED)
+    if wake.status == CommandStatus.FAILED:
+        assert wake.result.get("code") == "SUPERVISOR_UNAVAILABLE"
+    else:
+        assert wake.result.get("ok") is True
+
+    off = agent.handle_command(
+        RemoteCommand.create(
+            command_type=CommandType.DEACTIVATE_SUPERVISOR,
+            target_device_id="VIS-TARANTO-01",
+            source="test",
+        )
+    )
+    assert off.status in (CommandStatus.COMPLETED, CommandStatus.FAILED)
+    if off.status == CommandStatus.FAILED:
+        assert off.result.get("code") == "SUPERVISOR_UNAVAILABLE"
+    else:
+        assert off.result.get("ok") is True
+
+
+class _FakeJarvis:
+    def __init__(self) -> None:
+        self.started = False
+        self.stopped = False
+
+    def start(self) -> None:
+        self.started = True
+        self.stopped = False
+
+    def stop(self) -> None:
+        self.stopped = True
+        self.started = False
+
+
+def test_wake_deactivate_with_bound_jarvis(agent, core):
+    fake = _FakeJarvis()
+    mod = core.modules.get("enispace")
+    assert mod is not None
+    mod.bind_jarvis(fake)
+
+    wake = agent.handle_command(
+        RemoteCommand.create(
+            command_type=CommandType.WAKE_SUPERVISOR,
+            target_device_id="VIS-TARANTO-01",
+            source="test",
+        )
+    )
+    assert wake.status == CommandStatus.COMPLETED
+    assert fake.started is True
+
+    off = agent.handle_command(
+        RemoteCommand.create(
+            command_type=CommandType.DEACTIVATE_SUPERVISOR,
+            target_device_id="VIS-TARANTO-01",
+            source="test",
+        )
+    )
+    assert off.status == CommandStatus.COMPLETED
+    assert fake.stopped is True
+
+
 def test_idempotency_no_double_exec(agent):
     cmd = RemoteCommand.create(
         command_type=CommandType.GET_STATUS,

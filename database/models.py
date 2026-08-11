@@ -83,6 +83,9 @@ class AppSettings:
     download_folder: str = ""
     browser_visible: bool = False  # legacy: inverso di browser_hidden
     browser_hidden: bool = True  # default ON: Chrome headed ma nascosto
+    # Chrome di sistema + profilo Default (credenziali già salvate nel browser)
+    chrome_use_system_profile: bool = True
+    chrome_profile_directory: str = "Default"
     debug_mode: bool = False
     browser_timeout_ms: int = 60000
     open_folder_after_download: bool = False
@@ -118,6 +121,10 @@ class AppSettings:
     jarvis_simulation: bool = False
     # UI only: animazioni avatar (full | reduced | off)
     jarvis_avatar_level: str = "full"
+    # UI only: selected avatar GLB stem under assets/avatar/models/
+    jarvis_avatar_model: str = "vision_avatar_v1"
+    # UI only: avatar presentation mode (3d | png)
+    jarvis_avatar_mode: str = "3d"
     extra: dict = field(default_factory=dict)
 
 

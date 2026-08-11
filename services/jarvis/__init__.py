@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from services.jarvis.module_guard import ModuleOnlineGuard
 from services.jarvis.supervisor import JarvisSupervisor
 
-__all__ = ["JarvisSupervisor"]
+__all__ = ["JarvisSupervisor", "ModuleOnlineGuard"]

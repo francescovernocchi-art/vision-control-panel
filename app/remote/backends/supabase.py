@@ -1,6 +1,6 @@
-"""SupabaseRemoteBackend — cloud reale via RPC Agent (GET_STATUS / heartbeat).
+"""SupabaseRemoteBackend — cloud via RPC Agent (thin channel).
 
-Auth Agent (scelta):
+Auth Agent:
   Token dedicato per device (VISION_AGENT_TOKEN) validato server-side
   come SHA-256 in public.agent_api_tokens.
   Le RPC sono SECURITY DEFINER: il client Python usa solo
@@ -8,9 +8,11 @@ Auth Agent (scelta):
   NON richiede service_role nel processo Agent.
   VISION_AGENT_TOKEN NON è una chiave nativa Supabase.
 
-Schema: supabase/migrations/20260808_vision_remote_readonly.sql
+Canale sottile (Control Panel ↔ Agent):
+  heartbeat + GET_STATUS / WAKE_SUPERVISOR / DEACTIVATE_SUPERVISOR.
+  Schema: supabase/migrations/20260811_agent_thin_channel_pwa_compat.sql
+  Contratto: docs/VISION_CP_AGENT_THIN_CHANNEL.md
 """
-
 from __future__ import annotations
 
 import json
@@ -38,6 +40,10 @@ class SupabaseRemoteBackend:
         self._configured = bool(self._url and self._agent_token and self._anon)
         self._last_error = ""
 
+    @property
+    def last_error(self) -> str:
+        return self._last_error or ""
+
     def connect(self) -> None:
         if not self._configured:
             self.connected = False
@@ -49,31 +55,66 @@ class SupabaseRemoteBackend:
                 "SUPABASE_ANON_KEY mancante — necessaria per RPC Agent (no service_role)"
             )
         try:
+            # Reachability only — do NOT assume Vision contract columns (device_id).
+            # Live PWA projects may expose a different devices shape; real contract
+            # validation happens on agent_* RPC (heartbeat / fetch_commands).
             self._rest(
-                "GET", "/rest/v1/devices", params={"select": "device_id", "limit": "1"}
+                "GET", "/rest/v1/devices", params={"select": "*", "limit": "1"}
             )
             self.connected = True
             self._last_error = ""
             remote_log.info("SupabaseRemoteBackend connected url=%s", self._url)
         except Exception as exc:  # noqa: BLE001
             msg = str(exc)
-            if "HTTP Error" in msg or "urlopen" in msg.lower():
-                if "401" in msg or "406" in msg or "PGRST" in msg or "404" in msg:
-                    self.connected = True
-                    remote_log.info(
-                        "Supabase reachable (auth/schema pending ok for connect): %s",
-                        msg[:120],
-                    )
-                    return
+            if self._is_soft_connect_error(msg):
+                self.connected = True
+                self._last_error = ""
+                remote_log.info(
+                    "Supabase reachable (auth/schema pending ok for connect): %s",
+                    msg[:120],
+                )
+                return
             self.connected = False
-            self._last_error = msg[:200]
-            raise RuntimeError(f"Supabase connect failed: {msg}") from exc
+            self._last_error = self._humanize_error(msg)
+            raise RuntimeError(f"Supabase connect failed: {self._last_error}") from exc
 
     def disconnect(self) -> None:
         self.connected = False
 
     def health_check(self) -> bool:
         return bool(self.connected and self._configured)
+
+    def probe_agent_rpc(self) -> tuple[bool, str]:
+        """
+        Lightweight outbound check: connect + agent_heartbeat.
+        Returns (ok, human message). Does not mutate permanent ONLINE state
+        beyond what connect/heartbeat already do.
+        """
+        try:
+            self.connect()
+        except Exception as exc:  # noqa: BLE001
+            msg = self._humanize_error(str(exc))
+            self._last_error = msg
+            return False, msg
+        try:
+            identity = DeviceIdentity(
+                device_id=self.config.device_id,
+                device_name=self.config.device_name,
+                agent_version=self.config.agent_version,
+                vision_version=self.config.vision_version,
+                hostname="probe",
+                status="ONLINE",
+                modules=[],
+                platform_version="",
+                last_seen_at=now_iso(),
+            )
+            self.heartbeat(identity)
+            self._last_error = ""
+            return True, "Agent RPC OK (heartbeat riuscito)"
+        except Exception as exc:  # noqa: BLE001
+            msg = self._humanize_error(str(exc))
+            self._last_error = msg
+            return False, msg
 
     def heartbeat(self, identity: DeviceIdentity) -> None:
         payload = {
@@ -87,7 +128,58 @@ class SupabaseRemoteBackend:
             "p_modules": identity.modules or [],
             "p_timestamp": identity.last_seen_at or now_iso(),
         }
-        self._rpc("agent_heartbeat", payload)
+        try:
+            self._rpc("agent_heartbeat", payload)
+            self._last_error = ""
+        except Exception as exc:  # noqa: BLE001
+            self._last_error = self._humanize_error(str(exc))
+            raise RuntimeError(self._last_error) from exc
+
+    @staticmethod
+    def _is_soft_connect_error(msg: str) -> bool:
+        """Table reachable / auth pending — not a hard network failure."""
+        lower = (msg or "").lower()
+        if "urlopen" in lower or "timed out" in lower or "name or service not known" in lower:
+            return False
+        # HTTP 400 with missing Vision column is OK for reachability (PWA schema may differ)
+        if "42703" in msg or "does not exist" in lower:
+            return True
+        if "401" in msg or "406" in msg or "PGRST" in msg or "404" in msg:
+            return True
+        if "HTTP Error" in msg or "HTTP 4" in msg:
+            # 4xx from PostgREST usually means project is reachable
+            return "HTTP 5" not in msg
+        return False
+
+    @staticmethod
+    def _humanize_error(msg: str) -> str:
+        raw = (msg or "").strip()
+        lower = raw.lower()
+        if "agent_heartbeat" in lower and (
+            "pgrst202" in lower or "could not find the function" in lower or "404" in lower
+        ):
+            return (
+                "RPC agent_heartbeat assente su Supabase - "
+                "applicare migration thin channel "
+                "(supabase/migrations/20260811_agent_thin_channel_pwa_compat.sql)"
+            )
+        if "agent_fetch_pending_commands" in lower and (
+            "pgrst202" in lower or "could not find the function" in lower or "404" in lower
+        ):
+            return (
+                "RPC agent_fetch_pending_commands assente su Supabase - "
+                "applicare migration thin channel 20260811"
+            )
+        if "device_id does not exist" in lower or (
+            "42703" in raw and "device_id" in lower
+        ):
+            return (
+                "Tabella devices senza colonna device_id - "
+                "applicare migration thin channel PWA-compat (ADD device_id)"
+            )
+        if "not configured" in lower or "mancante" in lower:
+            return raw[:240]
+        return raw[:240]
 
     def fetch_commands(self, device_id: str) -> list[RemoteCommand]:
         rows = self._rpc(
@@ -217,9 +309,10 @@ class SupabaseRemoteBackend:
                 err_body = exc.read().decode("utf-8", errors="replace")[:500]
             except Exception:
                 pass
-            self._last_error = f"HTTP {exc.code}: {err_body}"
+            raw = f"HTTP {exc.code}: {err_body}"
+            self._last_error = self._humanize_error(raw)
             remote_log.warning(
-                "Supabase %s %s failed: %s", method, path, self._last_error
+                "Supabase %s %s failed: %s", method, path, raw[:240]
             )
             raise RuntimeError(self._last_error) from exc
 

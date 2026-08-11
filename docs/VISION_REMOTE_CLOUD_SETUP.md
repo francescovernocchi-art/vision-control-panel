@@ -20,9 +20,15 @@ Alias legacy ancora accettato: `SUPABASE_AGENT_KEY`.
 
 ## Migration
 
+**Progetto con PWA Lovable già esistente** (consigliato):
+
 ```text
-supabase/migrations/20260808_vision_remote_readonly.sql
+supabase/migrations/20260811_agent_thin_channel_pwa_compat.sql
 ```
+
+Vedi `supabase/migrations/README.md` e `docs/VISION_CP_AGENT_THIN_CHANNEL.md`.
+
+Greenfield (solo DB vuoto): `20260808_vision_remote_readonly.sql` — **non** usare su `devices` PWA popolata.
 
 **Non applicare in produzione senza autorizzazione.**
 

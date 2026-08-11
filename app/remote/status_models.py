@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, Optional
 
@@ -82,6 +82,55 @@ class RemoteAgentStatus:
 
 
 @dataclass(frozen=True)
+class RemoteEniSpaceRuntimeStatus:
+    """
+    Phase 3D — EniSpace / legacy supervisor observability (read-only).
+    Separate from Vision Core ``current_job`` / ``queue_size``.
+    Never exposes legacy product name "JARVIS" in API output.
+    """
+
+    status: str = "UNKNOWN"  # IDLE|PROCESSING|DEGRADED|OFFLINE|UNKNOWN
+    active: Optional[bool] = None
+    pending_jobs: Optional[int] = None
+    current_job: Optional[dict[str, Any]] = None
+    last_job: Optional[dict[str, Any]] = None
+    last_mail_check: Optional[str] = None
+    last_error: Optional[str] = None
+    available: bool = True
+    # Internal state label from legacy supervisor (Italian UI states), not product branding
+    detail_state: Optional[str] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "status": self.status,
+            "available": bool(self.available),
+        }
+        if self.active is not None:
+            payload["active"] = bool(self.active)
+        if self.pending_jobs is not None:
+            payload["pending_jobs"] = int(self.pending_jobs)
+        if self.current_job is not None:
+            payload["current_job"] = dict(self.current_job)
+        else:
+            payload["current_job"] = None
+        if self.last_job is not None:
+            payload["last_job"] = dict(self.last_job)
+        else:
+            payload["last_job"] = None
+        if self.last_mail_check is not None:
+            payload["last_mail_check"] = self.last_mail_check
+        else:
+            payload["last_mail_check"] = None
+        if self.last_error is not None:
+            payload["last_error"] = self.last_error
+        else:
+            payload["last_error"] = None
+        if self.detail_state is not None:
+            payload["detail_state"] = self.detail_state
+        return payload
+
+
+@dataclass(frozen=True)
 class RemoteStatusResponse:
     """Risposta GET_STATUS — JSON-safe, non sensibile."""
 
@@ -109,9 +158,11 @@ class RemoteStatusResponse:
     ok: bool = True
     # compat leggera con GET_STATUS precedente (test / consumer interni)
     vision_core: Optional[dict[str, Any]] = None
+    # Phase 3D — additive EniSpace runtime (optional; consumers ignore if unknown)
+    enispace_runtime: Optional[RemoteEniSpaceRuntimeStatus] = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "ok": self.ok,
             "api_version": self.api_version,
             "contract_version": self.contract_version,
@@ -136,6 +187,9 @@ class RemoteStatusResponse:
             "missing_sections": list(self.missing_sections),
             "vision_core": dict(self.vision_core) if self.vision_core else None,
         }
+        if self.enispace_runtime is not None:
+            payload["enispace_runtime"] = self.enispace_runtime.to_dict()
+        return payload
 
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), ensure_ascii=False, default=str)

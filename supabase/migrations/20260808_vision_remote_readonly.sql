@@ -1,5 +1,9 @@
 -- VIS•ION Remote — schema minimo READ-ONLY (GET_STATUS only)
 -- api_version=v1 / contract_version=1.0.0
+-- GREENFIELD ONLY: crea devices con PK text device_id.
+-- Se il progetto ha già devices PWA (id uuid + code), NON applicare questo file.
+-- Usa invece: 20260811_agent_thin_channel_pwa_compat.sql
+-- Vedi supabase/migrations/README.md e docs/VISION_CP_AGENT_THIN_CHANNEL.md.
 -- Applica su progetto Supabase dedicato. Reversibile: drop schema objects in coda commentata.
 -- NON contiene secret. NON abilita comandi operativi.
 

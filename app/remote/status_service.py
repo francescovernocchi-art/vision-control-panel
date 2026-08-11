@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, Optional
 
 from app.remote.remote_log import remote_log
 from app.remote.status_models import (
     RemoteAgentStatus,
+    RemoteEniSpaceRuntimeStatus,
     RemoteModuleStatus,
     RemoteServiceStatus,
     RemoteSkillStatus,
@@ -51,22 +53,24 @@ class RemoteStatusService:
             return resp.to_dict()
         except Exception as exc:  # noqa: BLE001
             remote_log.warning("RemoteStatusService build_status failed: %s", exc)
-            return RemoteStatusResponse(
-                ok=True,
-                core_status="DEGRADED",
-                supervisor_status="UNKNOWN",
-                overall_health="DEGRADED",
-                partial=True,
-                missing_sections=("skills", "services", "modules", "warnings"),
-                timestamp=_iso_now(),
-                device_id=self._device_id(),
-                device_name=self._device_name(),
-                agent_version=self._agent_version(),
-                vision_version=self._vision_version(),
-                platform_version="unavailable",
-                remote_control_enabled=self._remote_enabled(),
-                agent=self._agent_status_dto(last_error=str(exc)[:200]),
-                vision_core={"online": False, "error": "status_build_failed"},
+            return self._attach_enispace_runtime(
+                RemoteStatusResponse(
+                    ok=True,
+                    core_status="DEGRADED",
+                    supervisor_status="UNKNOWN",
+                    overall_health="DEGRADED",
+                    partial=True,
+                    missing_sections=("skills", "services", "modules", "warnings"),
+                    timestamp=_iso_now(),
+                    device_id=self._device_id(),
+                    device_name=self._device_name(),
+                    agent_version=self._agent_version(),
+                    vision_version=self._vision_version(),
+                    platform_version="unavailable",
+                    remote_control_enabled=self._remote_enabled(),
+                    agent=self._agent_status_dto(last_error=str(exc)[:200]),
+                    vision_core={"online": False, "error": "status_build_failed"},
+                )
             ).to_dict()
 
     def build_response(self) -> RemoteStatusResponse:
@@ -93,27 +97,29 @@ class RemoteStatusService:
                 missing.extend(["skills", "services", "modules", "warnings"])
 
         if source == "supervisor_view":
-            return self._from_supervisor(snap, missing)
+            return self._attach_enispace_runtime(self._from_supervisor(snap, missing))
         if source == "platform_snapshot":
-            return self._from_platform(platform_snap, missing)
+            return self._attach_enispace_runtime(self._from_platform(platform_snap, missing))
         if source == "legacy":
-            return self._from_legacy(legacy, missing)
-        return RemoteStatusResponse(
-            ok=True,
-            device_id=self._device_id(),
-            device_name=self._device_name(),
-            agent_version=self._agent_version(),
-            vision_version=self._vision_version(),
-            platform_version="unavailable",
-            timestamp=_iso_now(),
-            core_status="DEGRADED",
-            supervisor_status="UNKNOWN",
-            overall_health="DEGRADED",
-            partial=True,
-            missing_sections=tuple(missing) or ("skills", "services", "modules"),
-            remote_control_enabled=self._remote_enabled(),
-            agent=self._agent_status_dto(),
-            vision_core={"online": False},
+            return self._attach_enispace_runtime(self._from_legacy(legacy, missing))
+        return self._attach_enispace_runtime(
+            RemoteStatusResponse(
+                ok=True,
+                device_id=self._device_id(),
+                device_name=self._device_name(),
+                agent_version=self._agent_version(),
+                vision_version=self._vision_version(),
+                platform_version="unavailable",
+                timestamp=_iso_now(),
+                core_status="DEGRADED",
+                supervisor_status="UNKNOWN",
+                overall_health="DEGRADED",
+                partial=True,
+                missing_sections=tuple(missing) or ("skills", "services", "modules"),
+                remote_control_enabled=self._remote_enabled(),
+                agent=self._agent_status_dto(),
+                vision_core={"online": False},
+            )
         )
 
     def build_heartbeat_summary(self) -> dict[str, Any]:
@@ -154,6 +160,222 @@ class RemoteStatusService:
                 "modules": [],
                 "timestamp": _iso_now(),
             }
+
+    def _attach_enispace_runtime(self, resp: RemoteStatusResponse) -> RemoteStatusResponse:
+        """Phase 3D: attach additive ``enispace_runtime`` (backward compatible, read-only)."""
+        missing = list(resp.missing_sections)
+        warnings = list(resp.warnings)
+        try:
+            runtime = self._build_enispace_runtime()
+        except Exception as exc:  # noqa: BLE001
+            remote_log.debug("enispace_runtime section skipped: %s", exc)
+            runtime = RemoteEniSpaceRuntimeStatus(
+                status="UNKNOWN",
+                available=False,
+                last_error="enispace_runtime_unavailable",
+            )
+            if "enispace_runtime" not in missing:
+                missing.append("enispace_runtime")
+            warnings.append(
+                RemoteWarningStatus(
+                    code="ENISPACE_RUNTIME_UNAVAILABLE",
+                    severity="warning",
+                    component="enispace",
+                    message="EniSpace runtime observability unavailable",
+                )
+            )
+            return replace(
+                resp,
+                enispace_runtime=runtime,
+                partial=True,
+                missing_sections=tuple(dict.fromkeys(missing)),
+                warnings=tuple(warnings),
+            )
+
+        if runtime.available is False and "enispace_runtime" not in missing:
+            missing.append("enispace_runtime")
+            return replace(
+                resp,
+                enispace_runtime=runtime,
+                partial=True if missing else resp.partial,
+                missing_sections=tuple(dict.fromkeys(missing)),
+            )
+        return replace(resp, enispace_runtime=runtime)
+
+    def _build_enispace_runtime(self) -> RemoteEniSpaceRuntimeStatus:
+        """
+        Read-only EniSpace / legacy supervisor snapshot.
+        Dual-job: never merges into Vision Core current_job / queue_size.
+        No mail/process/print/download side effects.
+        """
+        worker = self._resolve_enispace_worker()
+        if worker is None:
+            return RemoteEniSpaceRuntimeStatus(
+                status="UNKNOWN",
+                available=False,
+                active=None,
+                pending_jobs=None,
+                current_job=None,
+                last_job=None,
+                last_mail_check=None,
+                last_error=None,
+            )
+
+        active = bool(getattr(worker, "is_active", False))
+        processing = bool(getattr(worker, "is_processing", False))
+        detail_state = str(getattr(worker, "state", "") or "") or None
+
+        pending: Optional[int]
+        try:
+            pc = getattr(worker, "pending_count", None)
+            if callable(pc):
+                pending = int(pc())
+            elif pc is None:
+                pending = None
+            else:
+                pending = int(pc)
+        except Exception:
+            pending = None
+
+        last_check_raw = getattr(worker, "last_check", None)
+        last_mail_check: Optional[str]
+        if last_check_raw in (None, "", "—"):
+            last_mail_check = None
+        else:
+            last_mail_check = str(last_check_raw)
+
+        current_job = self._sanitize_enispace_job(getattr(worker, "current_job", None))
+
+        last_summary = getattr(worker, "last_job_summary", None)
+        last_job: Optional[dict[str, Any]]
+        if last_summary in (None, "", "—"):
+            last_job = None
+        else:
+            last_job = {"summary": str(last_summary)[:240]}
+
+        last_error: Optional[str] = None
+        cur = getattr(worker, "current_job", None)
+        if cur is not None:
+            err = getattr(cur, "error_message", None)
+            if err:
+                last_error = str(err)[:200]
+
+        status = self._map_enispace_status(
+            active=active,
+            processing=processing,
+            detail_state=detail_state or "",
+        )
+
+        return RemoteEniSpaceRuntimeStatus(
+            status=status,
+            available=True,
+            active=active,
+            pending_jobs=pending,
+            current_job=current_job,
+            last_job=last_job,
+            last_mail_check=last_mail_check,
+            last_error=last_error,
+            detail_state=detail_state,
+        )
+
+    @staticmethod
+    def _map_enispace_status(*, active: bool, processing: bool, detail_state: str) -> str:
+        """Map legacy supervisor state → remote enum (no product branding)."""
+        if not active:
+            return "OFFLINE"
+        if processing:
+            return "PROCESSING"
+        normalized = detail_state.strip().upper()
+        if normalized in {"ERRORE", "INTERVENTO RICHIESTO"}:
+            return "DEGRADED"
+        processing_states = {
+            "CONTROLLO MAIL",
+            "NUOVA MAIL RILEVATA",
+            "ANALISI MAIL",
+            "CONTRATTO RICONOSCIUTO",
+            "ACCESSO ENISPACE",
+            "RICERCA DOCUMENTI",
+            "DOWNLOAD",
+            "PREPARAZIONE STAMPA",
+            "STAMPA",
+            "VERIFICA",
+        }
+        if normalized in processing_states:
+            return "PROCESSING"
+        if normalized == "OFFLINE":
+            return "OFFLINE"
+        if normalized in {"IN ATTESA", "COMPLETATO", ""}:
+            return "IDLE"
+        return "IDLE"
+
+    @staticmethod
+    def _sanitize_enispace_job(job: Any) -> Optional[dict[str, Any]]:
+        """JSON-safe EniSpace job DTO — no secrets, no filesystem dumps."""
+        if job is None:
+            return None
+        if isinstance(job, dict):
+            # Already a dict (tests / mocks) — whitelist keys only
+            allowed = (
+                "id",
+                "status",
+                "state",
+                "order_number",
+                "contract_number",
+                "docs_found",
+                "docs_downloaded",
+                "docs_printed",
+                "attempts",
+                "max_attempts",
+                "error_message",
+                "started_at",
+                "finished_at",
+                "last_event_at",
+                "subject",
+            )
+            out = {k: job[k] for k in allowed if k in job and job[k] not in (None, "")}
+            if "error_message" in out:
+                out["error_message"] = str(out["error_message"])[:200]
+            return out or None
+
+        out: dict[str, Any] = {}
+        for key in (
+            "id",
+            "status",
+            "state",
+            "order_number",
+            "contract_number",
+            "docs_found",
+            "docs_downloaded",
+            "docs_printed",
+            "attempts",
+            "max_attempts",
+            "started_at",
+            "finished_at",
+            "last_event_at",
+            "subject",
+        ):
+            val = getattr(job, key, None)
+            if val not in (None, ""):
+                out[key] = val
+        err = getattr(job, "error_message", None)
+        if err:
+            out["error_message"] = str(err)[:200]
+        return out or None
+
+    def _resolve_enispace_worker(self) -> Any:
+        core = self.core
+        if core is None:
+            return None
+        modules = getattr(core, "modules", None)
+        if modules is None:
+            return None
+        get = getattr(modules, "get", None)
+        if not callable(get):
+            return None
+        eni = get("enispace")
+        if eni is None:
+            return None
+        return getattr(eni, "jarvis", None)
 
     # ------------------------------------------------------------------ builders
 
@@ -233,6 +455,8 @@ class RemoteStatusService:
             vision_core={
                 "online": online,
                 "product": getattr(self.core, "product_name", "VIS•ION") if self.core else "VIS•ION",
+                "product_name": "VISION",
+                # LEGACY: assistant naming residual — do not rename in Phase 3D (compat)
                 "assistant": getattr(self.core, "assistant_name", "JARVIS") if self.core else "JARVIS",
                 "assistant_state": str(getattr(self.core, "assistant_state", "") or ""),
                 "started_at": str(getattr(self.core, "started_at", "") or ""),
@@ -367,6 +591,7 @@ class RemoteStatusService:
             vision_core={
                 "online": online,
                 "product": legacy.get("product"),
+                "product_name": "VISION",
                 "assistant": legacy.get("assistant"),
                 "assistant_state": legacy.get("assistant_state"),
                 "started_at": legacy.get("started_at"),

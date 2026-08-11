@@ -21,12 +21,12 @@ if TYPE_CHECKING:
     from services.enispace_service import EniSpaceService
 
 
-class SettingsWindow(ctk.CTkToplevel):
-    """Impostazioni: credenziali, download, browser, debug."""
+class SettingsPage(ctk.CTkFrame):
+    """Impostazioni modulari — in-app o dialog."""
 
     def __init__(
         self,
-        master: ctk.CTk,
+        master,
         db: "Database",
         credentials: "CredentialService",
         enispace: "EniSpaceService",
@@ -38,8 +38,9 @@ class SettingsWindow(ctk.CTkToplevel):
         on_open_ordini: Optional[Callable[[], None]] = None,
         on_open_document_flow: Optional[Callable[[], None]] = None,
         on_activity: Optional[Callable[[str], None]] = None,
+        show_chrome: bool = True,
     ) -> None:
-        super().__init__(master)
+        super().__init__(master, fg_color=COLORS["bg"])
         self.db = db
         self.credentials = credentials
         self.enispace = enispace
@@ -50,53 +51,347 @@ class SettingsWindow(ctk.CTkToplevel):
         self.on_open_ordini = on_open_ordini
         self.on_open_document_flow = on_open_document_flow
         self.on_activity = on_activity
-
-        self.title(f"Impostazioni — {APP_NAME}")
-        self.geometry("640x780")
-        self.minsize(520, 680)
-        self.configure(fg_color=COLORS["bg"])
-        self.transient(master)
-        self.grab_set()
-        apply_app_icon(self)
+        self._show_chrome = show_chrome
 
         self._show_password = tk.BooleanVar(value=False)
+        self._show_mail_password = tk.BooleanVar(value=False)
+        self._modules: dict[str, ctk.CTkFrame] = {}
+        self._nav_buttons: dict[str, ctk.CTkButton] = {}
+        self._active_module = "generale"
         self._build()
         self._load()
-        self.after(50, self.focus)
+        self._select_module("generale")
 
+    def reload_active(self) -> None:
+        try:
+            self._load()
+        except Exception:
+            pass
+        self._select_module(self._active_module)
+
+    # ------------------------------------------------------------------ UI shell
     def _build(self) -> None:
-        pad = {"padx": 20, "pady": 6}
-        root = ctk.CTkScrollableFrame(self, fg_color=COLORS["bg"])
-        root.pack(fill="both", expand=True, padx=8, pady=8)
-
+        # Large workspace title (reference IMPOSTAZIONI)
+        title_wrap = ctk.CTkFrame(self, fg_color="transparent")
+        title_wrap.pack(fill="x", padx=8, pady=(4, 0))
         ctk.CTkLabel(
-            root,
-            text="Impostazioni",
-            font=ctk.CTkFont(family=font_family(), size=22, weight="bold"),
+            title_wrap,
+            text="IMPOSTAZIONI",
+            font=ctk.CTkFont(family=font_family(), size=28, weight="bold"),
             text_color=COLORS["text"],
-        ).pack(anchor="w", **pad)
+        ).pack(anchor="w")
         ctk.CTkLabel(
-            root,
-            text="GENERALE · MAIL · ENISPACE · STAMPA · JARVIS · LOG",
-            font=ctk.CTkFont(family=font_family(), size=11),
+            title_wrap,
+            text="Configura i moduli e le preferenze di VISION",
+            font=ctk.CTkFont(family=font_family(), size=14),
             text_color=COLORS["muted"],
-        ).pack(anchor="w", padx=20, pady=(0, 4))
+        ).pack(anchor="w", pady=(4, 8))
 
-        # --- Account ---
-        self._section(root, "GENERALE — Account eniSpace")
-        ctk.CTkLabel(root, text="Username eniSpace", text_color=COLORS["muted"]).pack(
-            anchor="w", padx=20
-        )
-        self.username_entry = ctk.CTkEntry(
-            root, height=36, fg_color=COLORS["input"], border_color=COLORS["border"]
-        )
-        self.username_entry.pack(fill="x", **pad)
+        if self._show_chrome:
+            # dialog mode already has window title; keep compact spacer
+            pass
 
-        ctk.CTkLabel(root, text="Password", text_color=COLORS["muted"]).pack(
-            anchor="w", padx=20
+        body = ctk.CTkFrame(self, fg_color=COLORS["bg"])
+        body.pack(fill="both", expand=True, padx=4, pady=(0, 8))
+        body.grid_columnconfigure(1, weight=1)
+        body.grid_rowconfigure(0, weight=1)
+
+        nav = ctk.CTkScrollableFrame(
+            body,
+            fg_color=COLORS["sidebar"],
+            corner_radius=12,
+            border_width=1,
+            border_color=COLORS["border"],
+            width=280,
         )
-        pass_row = ctk.CTkFrame(root, fg_color="transparent")
-        pass_row.pack(fill="x", **pad)
+        nav.grid(row=0, column=0, sticky="nsw", padx=(0, 16))
+        ctk.CTkLabel(
+            nav,
+            text="MODULI",
+            font=ctk.CTkFont(family=font_family(), size=12, weight="bold"),
+            text_color=COLORS["muted"],
+        ).pack(anchor="w", padx=16, pady=(16, 10))
+
+        modules = [
+            ("generale", "Generale", "Identità e comportamento UI"),
+            ("enispace", "EniSpace", "Account e portale"),
+            ("mail", "Mail", "Casella e sincronizzazione"),
+            ("stampa", "Stampa / Download", "Code e cartelle"),
+            ("coin_transport", "Trasporto Monete", "Sala Conta e Protocollo"),
+            ("remote", "Remote & Cloud", "Agent e connessione"),
+            ("supervisor", "Supervisor", "Automazione operativa"),
+            ("diagnostica", "Diagnostica", "Log e controlli"),
+        ]
+        for key, label, desc in modules:
+            card = ctk.CTkFrame(
+                nav,
+                fg_color="transparent",
+                corner_radius=10,
+                border_width=1,
+                border_color=COLORS["border"],
+                height=64,
+            )
+            card.pack(fill="x", padx=10, pady=4)
+            card.pack_propagate(False)
+            btn = ctk.CTkButton(
+                card,
+                text=f"{label}\n{desc}",
+                anchor="w",
+                height=56,
+                corner_radius=10,
+                fg_color="transparent",
+                hover_color=COLORS["active_nav"],
+                text_color=COLORS["text"],
+                font=ctk.CTkFont(family=font_family(), size=13, weight="bold"),
+                command=lambda k=key: self._select_module(k),
+            )
+            btn.pack(fill="both", expand=True, padx=2, pady=2)
+            self._nav_buttons[key] = btn
+
+        self._status_label = ctk.CTkLabel(
+            nav,
+            text="",
+            font=ctk.CTkFont(family=font_family(), size=12),
+            text_color=COLORS["muted"],
+            wraplength=240,
+            justify="left",
+        )
+        self._status_label.pack(side="bottom", anchor="w", padx=14, pady=14)
+
+        content_host = ctk.CTkFrame(
+            body,
+            fg_color=COLORS["panel"],
+            corner_radius=12,
+            border_width=1,
+            border_color=COLORS["border"],
+        )
+        content_host.grid(row=0, column=1, sticky="nsew")
+        content_host.grid_rowconfigure(0, weight=1)
+        content_host.grid_columnconfigure(0, weight=1)
+
+        self._content = ctk.CTkFrame(content_host, fg_color="transparent")
+        self._content.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
+        self._content.grid_rowconfigure(0, weight=1)
+        self._content.grid_columnconfigure(0, weight=1)
+
+        self._modules["generale"] = self._build_generale_panel(self._content)
+        self._modules["enispace"] = self._build_enispace_panel(self._content)
+        self._modules["mail"] = self._build_mail_panel(self._content)
+        self._modules["stampa"] = self._build_stampa_panel(self._content)
+        self._modules["coin_transport"] = self._build_coin_transport_panel(self._content)
+        self._modules["remote"] = self._build_remote_panel(self._content)
+        self._modules["supervisor"] = self._build_supervisor_panel(self._content)
+        self._modules["diagnostica"] = self._build_diagnostica_panel(self._content)
+
+        for frame in self._modules.values():
+            frame.grid(row=0, column=0, sticky="nsew")
+            frame.grid_remove()
+
+    def _select_module(self, key: str) -> None:
+        self._active_module = key
+        for k, frame in self._modules.items():
+            if k == key:
+                frame.grid()
+            else:
+                frame.grid_remove()
+        for k, btn in self._nav_buttons.items():
+            if k == key:
+                btn.configure(
+                    fg_color=COLORS["active_nav"],
+                    border_width=1,
+                    border_color=COLORS["accent"],
+                    text_color=COLORS["text"],
+                )
+            else:
+                btn.configure(
+                    fg_color="transparent",
+                    border_width=0,
+                    text_color=COLORS["muted"],
+                )
+        if key == "remote":
+            self._refresh_remote_panel()
+        elif key == "coin_transport":
+            panel = self._modules.get("coin_transport")
+            coin = getattr(panel, "_coin_panel", None) if panel is not None else None
+            if coin is not None:
+                try:
+                    coin.reload()
+                except Exception:
+                    pass
+            self._set_status("")
+        else:
+            self._set_status("")
+
+    def _set_status(self, message: str, *, ok: Optional[bool] = None) -> None:
+        color = COLORS["muted"]
+        if ok is True:
+            color = COLORS["success"]
+        elif ok is False:
+            color = COLORS["danger"]
+        self._status_label.configure(text=message, text_color=color)
+
+    def _scroll(self, parent: ctk.CTkFrame) -> ctk.CTkFrame:
+        """Scrollable content host with left padding (avoids CTk canvas clip)."""
+        parent.grid_rowconfigure(0, weight=1)
+        parent.grid_columnconfigure(0, weight=1)
+        scroll = ctk.CTkScrollableFrame(
+            parent,
+            fg_color="transparent",
+            scrollbar_button_color=COLORS["border"],
+            scrollbar_button_hover_color=COLORS["accent"],
+        )
+        scroll.grid(row=0, column=0, sticky="nsew", padx=(8, 4), pady=8)
+        inner = ctk.CTkFrame(scroll, fg_color="transparent")
+        inner.pack(fill="both", expand=True, padx=(10, 6), pady=4)
+        return inner
+
+    def _module_title(self, parent, title: str, subtitle: str) -> None:
+        ctk.CTkLabel(
+            parent,
+            text=title,
+            font=ctk.CTkFont(family=font_family(), size=18, weight="bold"),
+            text_color=COLORS["text"],
+        ).pack(anchor="w", padx=16, pady=(12, 2))
+        ctk.CTkLabel(
+            parent,
+            text=subtitle,
+            font=ctk.CTkFont(family=font_family(), size=12),
+            text_color=COLORS["muted"],
+            wraplength=720,
+            justify="left",
+        ).pack(anchor="w", padx=16, pady=(0, 14))
+
+    def _group(self, parent, title: str) -> ctk.CTkFrame:
+        card = ctk.CTkFrame(
+            parent,
+            fg_color=COLORS["panel_alt"],
+            corner_radius=10,
+            border_width=1,
+            border_color=COLORS["border"],
+        )
+        card.pack(fill="x", padx=8, pady=(0, 12))
+        ctk.CTkLabel(
+            card,
+            text=title,
+            font=ctk.CTkFont(family=font_family(), size=13, weight="bold"),
+            text_color=COLORS["text"],
+        ).pack(anchor="w", padx=14, pady=(12, 6))
+        inner = ctk.CTkFrame(card, fg_color="transparent")
+        inner.pack(fill="x", padx=14, pady=(0, 14))
+        return inner
+
+    def _label(self, parent, text: str) -> None:
+        ctk.CTkLabel(
+            parent,
+            text=text,
+            font=ctk.CTkFont(family=font_family(), size=12),
+            text_color=COLORS["muted"],
+        ).pack(anchor="w", pady=(6, 2))
+
+    def _entry(self, parent, **kwargs) -> ctk.CTkEntry:
+        e = ctk.CTkEntry(
+            parent,
+            height=36,
+            fg_color=COLORS["input"],
+            border_color=COLORS["border"],
+            **kwargs,
+        )
+        e.pack(fill="x", pady=(0, 4))
+        return e
+
+    def _save_bar(self, parent, command, label: str = "Salva modifiche") -> None:
+        bar = ctk.CTkFrame(parent, fg_color="transparent")
+        bar.pack(fill="x", padx=8, pady=(4, 16))
+        ctk.CTkButton(
+            bar,
+            text=label,
+            height=40,
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["accent_hover"],
+            font=ctk.CTkFont(family=font_family(), size=13, weight="bold"),
+            command=command,
+        ).pack(side="left")
+
+    # ------------------------------------------------------------------ panels
+    def _build_generale_panel(self, parent: ctk.CTkFrame) -> ctk.CTkFrame:
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        scroll = self._scroll(frame)
+        self._module_title(
+            scroll,
+            "Generale",
+            "Identità applicazione e comportamento interfaccia",
+        )
+        info = self._group(scroll, "Applicazione")
+        ctk.CTkLabel(
+            info,
+            text=f"Prodotto: {APP_NAME}",
+            text_color=COLORS["text"],
+            font=ctk.CTkFont(family=font_family(), size=13),
+        ).pack(anchor="w")
+        try:
+            from ui.theme import APP_VERSION
+            ver = APP_VERSION
+        except Exception:
+            ver = "—"
+        ctk.CTkLabel(
+            info,
+            text=f"Versione: {ver}",
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(family=font_family(), size=12),
+        ).pack(anchor="w", pady=(4, 0))
+        ctk.CTkLabel(
+            info,
+            text="Le credenziali EniSpace, Mail, Stampa e Remote sono nei rispettivi moduli.",
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(family=font_family(), size=11),
+            wraplength=640,
+            justify="left",
+        ).pack(anchor="w", pady=(8, 0))
+
+        ui = self._group(scroll, "Comportamento UI")
+        self._label(ui, "Riduci animazioni (avatar VISION)")
+        self.jarvis_avatar_level_var = tk.StringVar(value="Complete")
+        self.jarvis_avatar_level_menu = ctk.CTkOptionMenu(
+            ui,
+            values=["Complete", "Ridotte", "Disattivate"],
+            variable=self.jarvis_avatar_level_var,
+            fg_color=COLORS["input"],
+            button_color=COLORS["accent"],
+            button_hover_color=COLORS["accent_hover"],
+            dropdown_fg_color=COLORS["panel"],
+            height=36,
+        )
+        self.jarvis_avatar_level_menu.pack(fill="x", pady=(0, 4))
+        ctk.CTkLabel(
+            ui,
+            text=(
+                "Ridotte: niente micro-movimento testa, pulse attenuato. "
+                "Disattivate: avatar statico. Solo UI — non altera il supervisore."
+            ),
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=11),
+            wraplength=640,
+            justify="left",
+        ).pack(anchor="w")
+
+        self._save_bar(scroll, lambda: self._save_module("Generale"))
+        return frame
+
+    def _build_enispace_panel(self, parent: ctk.CTkFrame) -> ctk.CTkFrame:
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        scroll = self._scroll(frame)
+        self._module_title(
+            scroll,
+            "EniSpace",
+            "Account, browser e portale eniSpace",
+        )
+
+        acc = self._group(scroll, "Account EniSpace")
+        self._label(acc, "Username eniSpace")
+        self.username_entry = self._entry(acc)
+        self._label(acc, "Password")
+        pass_row = ctk.CTkFrame(acc, fg_color="transparent")
+        pass_row.pack(fill="x", pady=(0, 4))
         self.password_entry = ctk.CTkEntry(
             pass_row,
             height=36,
@@ -114,79 +409,85 @@ class SettingsWindow(ctk.CTkToplevel):
             fg_color=COLORS["accent"],
             hover_color=COLORS["accent_hover"],
         ).pack(side="left", padx=(10, 0))
-
         ctk.CTkButton(
-            root,
-            text="SALVA CREDENZIALI",
+            acc,
+            text="Salva credenziali",
             height=36,
             fg_color=COLORS["accent"],
             hover_color=COLORS["accent_hover"],
             command=self._save_credentials,
-        ).pack(fill="x", **pad)
+        ).pack(anchor="w", pady=(8, 0))
 
-        # --- Download ---
-        self._section(root, "STAMPA / DOWNLOAD — Cartelle")
-        ctk.CTkLabel(root, text="Cartella download", text_color=COLORS["muted"]).pack(
-            anchor="w", padx=20
-        )
-        dl_row = ctk.CTkFrame(root, fg_color="transparent")
-        dl_row.pack(fill="x", **pad)
-        self.download_entry = ctk.CTkEntry(
-            dl_row, height=36, fg_color=COLORS["input"], border_color=COLORS["border"]
-        )
-        self.download_entry.pack(side="left", fill="x", expand=True)
-        ctk.CTkButton(
-            dl_row,
-            text="Sfoglia",
-            width=90,
-            height=36,
-            fg_color=COLORS["panel"],
-            hover_color=COLORS["border"],
-            command=self._browse_folder,
-        ).pack(side="left", padx=(8, 0))
-
-        self.open_folder_var = tk.BooleanVar(value=False)
+        br = self._group(scroll, "Browser / Portale")
+        self.hidden_var = tk.BooleanVar(value=True)
         ctk.CTkCheckBox(
-            root,
-            text="Apri cartella dopo download",
-            variable=self.open_folder_var,
+            br,
+            text="Nascondi browser (solo UI app; Chrome headed off-screen)",
+            variable=self.hidden_var,
             text_color=COLORS["text"],
             fg_color=COLORS["accent"],
             hover_color=COLORS["accent_hover"],
-        ).pack(anchor="w", padx=20, pady=4)
-
-        # --- Casella IMAP (stile VIS Protocollo) ---
-        self._section(root, "MAIL — Casella IMAP / SMTP (MdA_Eni)")
+        ).pack(anchor="w", pady=4)
+        self.chrome_system_var = tk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            br,
+            text="(Sconsigliato) Profilo Chrome di sistema — non usato (Chrome 151+)",
+            variable=self.chrome_system_var,
+            text_color=COLORS["text"],
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["accent_hover"],
+        ).pack(anchor="w", pady=4)
         ctk.CTkLabel(
-            root,
-            text="Host IMAP (es. pop.securemail.pro)",
+            br,
+            text=(
+                "Come VIS eniSpace Utility: Chrome di sistema (channel=chrome) "
+                "con profilo isolato data/browser-profile. Al primo accesso "
+                "completare SSO/MFA; la sessione resta salvata in VISION."
+            ),
             text_color=COLORS["muted"],
-        ).pack(anchor="w", padx=20)
-        self.imap_host_entry = ctk.CTkEntry(
-            root,
-            height=36,
-            placeholder_text="pop.securemail.pro",
-            fg_color=COLORS["input"],
-            border_color=COLORS["border"],
+            wraplength=640,
+            justify="left",
+            font=ctk.CTkFont(size=11),
+        ).pack(anchor="w", pady=(0, 6))
+        ctk.CTkLabel(
+            br,
+            text=(
+                "Primo login / MFA: se Chrome non compare, disattiva «Nascondi browser», "
+                "completa l'accesso, poi riattivalo. La sessione resta nel profilo."
+            ),
+            text_color=COLORS["muted"],
+            wraplength=640,
+            justify="left",
+            font=ctk.CTkFont(size=11),
+        ).pack(anchor="w", pady=(0, 6))
+        self._label(br, "Timeout browser (ms)")
+        self.timeout_entry = self._entry(br)
+        self._label(br, "URL portale eniSpace")
+        self.url_entry = self._entry(
+            br,
+            placeholder_text="https://enispace.eni.com/it_IT/private/myhome.page",
         )
-        self.imap_host_entry.pack(fill="x", **pad)
 
-        row_imap = ctk.CTkFrame(root, fg_color="transparent")
-        row_imap.pack(fill="x", padx=20, pady=4)
-        ctk.CTkLabel(row_imap, text="Porta", text_color=COLORS["muted"]).pack(
-            side="left"
-        )
+        self._save_bar(scroll, lambda: self._save_module("EniSpace"))
+        return frame
+
+    def _build_mail_panel(self, parent: ctk.CTkFrame) -> ctk.CTkFrame:
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        scroll = self._scroll(frame)
+        pad = {"padx": 0, "pady": 4}
+        self._module_title(scroll, "Mail", "Casella IMAP / SMTP (MdA_Eni)")
+
+        imap = self._group(scroll, "IMAP")
+        self._label(imap, "Host IMAP (es. pop.securemail.pro)")
+        self.imap_host_entry = self._entry(imap, placeholder_text="pop.securemail.pro")
+        row_imap = ctk.CTkFrame(imap, fg_color="transparent")
+        row_imap.pack(fill="x", pady=4)
+        ctk.CTkLabel(row_imap, text="Porta", text_color=COLORS["muted"]).pack(side="left")
         self.imap_port_entry = ctk.CTkEntry(
-            row_imap,
-            width=80,
-            height=36,
-            fg_color=COLORS["input"],
-            border_color=COLORS["border"],
+            row_imap, width=80, height=36, fg_color=COLORS["input"], border_color=COLORS["border"]
         )
         self.imap_port_entry.pack(side="left", padx=(8, 16))
-        ctk.CTkLabel(row_imap, text="Sicurezza", text_color=COLORS["muted"]).pack(
-            side="left"
-        )
+        ctk.CTkLabel(row_imap, text="Sicurezza", text_color=COLORS["muted"]).pack(side="left")
         self.imap_security_var = tk.StringVar(value="SSL")
         self.imap_security_menu = ctk.CTkOptionMenu(
             row_imap,
@@ -199,41 +500,32 @@ class SettingsWindow(ctk.CTkToplevel):
         )
         self.imap_security_menu.pack(side="left", padx=(8, 0))
 
-        ctk.CTkLabel(
-            root,
-            text="Utente casella (email completa)",
-            text_color=COLORS["muted"],
-        ).pack(anchor="w", padx=20)
-        self.imap_user_entry = ctk.CTkEntry(
-            root,
-            height=36,
-            placeholder_text="nome@dominio.it",
-            fg_color=COLORS["input"],
-            border_color=COLORS["border"],
-        )
-        self.imap_user_entry.pack(fill="x", **pad)
-
-        ctk.CTkLabel(
-            root,
-            text="Password casella (Credential Manager)",
-            text_color=COLORS["muted"],
-        ).pack(anchor="w", padx=20)
+        self._label(imap, "Utente casella (email completa)")
+        self.imap_user_entry = self._entry(imap, placeholder_text="nome@dominio.it")
+        self._label(imap, "Password casella (Credential Manager)")
+        mail_pass_row = ctk.CTkFrame(imap, fg_color="transparent")
+        mail_pass_row.pack(fill="x", pady=(0, 4))
         self.imap_pass_entry = ctk.CTkEntry(
-            root,
+            mail_pass_row,
             height=36,
             show="•",
             fg_color=COLORS["input"],
             border_color=COLORS["border"],
         )
-        self.imap_pass_entry.pack(fill="x", **pad)
-
-        ctk.CTkLabel(
-            root,
-            text="Cartella IMAP (scegli dall'elenco o digita)",
+        self.imap_pass_entry.pack(side="left", fill="x", expand=True)
+        ctk.CTkCheckBox(
+            mail_pass_row,
+            text="Mostra",
+            variable=self._show_mail_password,
+            command=self._toggle_mail_password,
             text_color=COLORS["muted"],
-        ).pack(anchor="w", padx=20)
-        row_folder = ctk.CTkFrame(root, fg_color="transparent")
-        row_folder.pack(fill="x", padx=20, pady=4)
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["accent_hover"],
+        ).pack(side="left", padx=(10, 0))
+
+        self._label(imap, "Cartella IMAP (scegli dall'elenco o digita)")
+        row_folder = ctk.CTkFrame(imap, fg_color="transparent")
+        row_folder.pack(fill="x", pady=4)
         self.imap_folder_var = tk.StringVar(value="INBOX.MdA_Eni")
         self.imap_folder_combo = ctk.CTkComboBox(
             row_folder,
@@ -249,14 +541,13 @@ class SettingsWindow(ctk.CTkToplevel):
             text_color=COLORS["text"],
         )
         self.imap_folder_combo.pack(side="left", fill="x", expand=True)
-        # Combo editabile: consente digita/manuale
         try:
             self.imap_folder_combo._entry.configure(state="normal")  # noqa: SLF001
         except Exception:
             pass
         ctk.CTkButton(
             row_folder,
-            text="CARICA CARTELLE",
+            text="Carica cartelle",
             height=36,
             width=140,
             fg_color=COLORS["panel"],
@@ -265,22 +556,20 @@ class SettingsWindow(ctk.CTkToplevel):
             hover_color=COLORS["border"],
             command=self._load_imap_folders,
         ).pack(side="left", padx=(8, 0))
-        # Alias legacy per codice che leggeva l'entry
         self.imap_folder_entry = self.imap_folder_combo
 
         self.imap_unread_var = tk.BooleanVar(value=True)
         ctk.CTkCheckBox(
-            root,
+            imap,
             text="Solo mail non lette",
             variable=self.imap_unread_var,
             text_color=COLORS["text"],
             fg_color=COLORS["accent"],
             hover_color=COLORS["accent_hover"],
-        ).pack(anchor="w", padx=20, pady=4)
+        ).pack(anchor="w", pady=4)
 
-        # Autosync IMAP
-        autosync_row = ctk.CTkFrame(root, fg_color="transparent")
-        autosync_row.pack(fill="x", padx=20, pady=(4, 4))
+        autosync_row = ctk.CTkFrame(imap, fg_color="transparent")
+        autosync_row.pack(fill="x", pady=4)
         self.autosync_enabled_var = tk.BooleanVar(value=False)
         ctk.CTkCheckBox(
             autosync_row,
@@ -290,67 +579,42 @@ class SettingsWindow(ctk.CTkToplevel):
             fg_color=COLORS["accent"],
             hover_color=COLORS["accent_hover"],
         ).pack(side="left")
-        ctk.CTkLabel(
-            autosync_row,
-            text="ogni",
-            text_color=COLORS["muted"],
-        ).pack(side="left", padx=(16, 6))
+        ctk.CTkLabel(autosync_row, text="ogni", text_color=COLORS["muted"]).pack(
+            side="left", padx=(16, 6)
+        )
         self.autosync_interval_entry = ctk.CTkEntry(
-            autosync_row,
-            width=64,
-            height=32,
-            fg_color=COLORS["input"],
-            border_color=COLORS["border"],
+            autosync_row, width=64, height=32, fg_color=COLORS["input"], border_color=COLORS["border"]
         )
         self.autosync_interval_entry.pack(side="left")
         self.autosync_interval_entry.insert(0, "15")
+        ctk.CTkLabel(autosync_row, text="minuti", text_color=COLORS["muted"]).pack(
+            side="left", padx=(6, 0)
+        )
         ctk.CTkLabel(
-            autosync_row,
-            text="minuti",
-            text_color=COLORS["muted"],
-        ).pack(side="left", padx=(6, 0))
-        ctk.CTkLabel(
-            root,
+            imap,
             text=(
                 "Con autosync attivo l'app interroga IMAP in background "
                 "(senza bloccare la UI), scarica i MdA e aggiorna il Registro."
             ),
             text_color=COLORS["muted"],
             font=ctk.CTkFont(size=11),
-            wraplength=520,
+            wraplength=640,
             justify="left",
-        ).pack(anchor="w", padx=20, pady=(0, 8))
+        ).pack(anchor="w", pady=(0, 4))
 
-        ctk.CTkLabel(
-            root,
-            text="Host SMTP (opzionale, es. authsmtp.securemail.pro)",
-            text_color=COLORS["muted"],
-        ).pack(anchor="w", padx=20)
-        self.smtp_host_entry = ctk.CTkEntry(
-            root,
-            height=36,
-            placeholder_text="authsmtp.securemail.pro",
-            fg_color=COLORS["input"],
-            border_color=COLORS["border"],
+        smtp = self._group(scroll, "SMTP")
+        self._label(smtp, "Host SMTP (opzionale, es. authsmtp.securemail.pro)")
+        self.smtp_host_entry = self._entry(
+            smtp, placeholder_text="authsmtp.securemail.pro"
         )
-        self.smtp_host_entry.pack(fill="x", **pad)
-
-        row_smtp = ctk.CTkFrame(root, fg_color="transparent")
-        row_smtp.pack(fill="x", padx=20, pady=4)
-        ctk.CTkLabel(row_smtp, text="Porta SMTP", text_color=COLORS["muted"]).pack(
-            side="left"
-        )
+        row_smtp = ctk.CTkFrame(smtp, fg_color="transparent")
+        row_smtp.pack(fill="x", pady=4)
+        ctk.CTkLabel(row_smtp, text="Porta SMTP", text_color=COLORS["muted"]).pack(side="left")
         self.smtp_port_entry = ctk.CTkEntry(
-            row_smtp,
-            width=80,
-            height=36,
-            fg_color=COLORS["input"],
-            border_color=COLORS["border"],
+            row_smtp, width=80, height=36, fg_color=COLORS["input"], border_color=COLORS["border"]
         )
         self.smtp_port_entry.pack(side="left", padx=(8, 16))
-        ctk.CTkLabel(row_smtp, text="Sicurezza", text_color=COLORS["muted"]).pack(
-            side="left"
-        )
+        ctk.CTkLabel(row_smtp, text="Sicurezza", text_color=COLORS["muted"]).pack(side="left")
         self.smtp_security_var = tk.StringVar(value="SSL")
         self.smtp_security_menu = ctk.CTkOptionMenu(
             row_smtp,
@@ -363,11 +627,11 @@ class SettingsWindow(ctk.CTkToplevel):
         )
         self.smtp_security_menu.pack(side="left", padx=(8, 0))
 
-        row_mail_btns = ctk.CTkFrame(root, fg_color="transparent")
-        row_mail_btns.pack(fill="x", padx=20, pady=(4, 8))
+        row_mail_btns = ctk.CTkFrame(scroll, fg_color="transparent")
+        row_mail_btns.pack(fill="x", padx=8, pady=(0, 8))
         ctk.CTkButton(
             row_mail_btns,
-            text="SALVA CRED. CASELLA",
+            text="Salva cred. casella",
             height=36,
             width=170,
             fg_color=COLORS["accent"],
@@ -376,7 +640,7 @@ class SettingsWindow(ctk.CTkToplevel):
         ).pack(side="left")
         ctk.CTkButton(
             row_mail_btns,
-            text="TEST IMAP",
+            text="Test IMAP",
             height=36,
             width=110,
             fg_color=COLORS["panel"],
@@ -387,7 +651,7 @@ class SettingsWindow(ctk.CTkToplevel):
         ).pack(side="left", padx=(8, 0))
         ctk.CTkButton(
             row_mail_btns,
-            text="TEST SMTP",
+            text="Test SMTP",
             height=36,
             width=110,
             fg_color=COLORS["panel"],
@@ -397,274 +661,587 @@ class SettingsWindow(ctk.CTkToplevel):
             command=self._test_smtp,
         ).pack(side="left", padx=(8, 0))
         ctk.CTkLabel(
-            root,
-            text="IMAP e SMTP usano la stessa password casella. "
-            "Dopo TEST IMAP OK (o CARICA CARTELLE) scegli la cartella dall'elenco.",
+            scroll,
+            text=(
+                "IMAP e SMTP usano la stessa password casella. "
+                "Dopo Test IMAP OK (o Carica cartelle) scegli la cartella dall'elenco."
+            ),
             text_color=COLORS["muted"],
-            wraplength=520,
+            wraplength=640,
             justify="left",
-        ).pack(anchor="w", padx=20, pady=(0, 6))
+            font=ctk.CTkFont(size=11),
+        ).pack(anchor="w", padx=12, pady=(0, 6))
 
-        # --- Browser ---
-        self._section(root, "ENISPACE — Browser / Debug")
-        self.hidden_var = tk.BooleanVar(value=True)
-        ctk.CTkCheckBox(
-            root,
-            text="Nascondi browser (solo UI app; Chrome headed off-screen)",
-            variable=self.hidden_var,
-            text_color=COLORS["text"],
-            fg_color=COLORS["accent"],
-            hover_color=COLORS["accent_hover"],
-        ).pack(anchor="w", padx=20, pady=4)
-        ctk.CTkLabel(
-            root,
-            text="Primo login / MFA: se Chrome non compare, disattiva «Nascondi browser», "
-            "completa l'accesso, poi riattivalo. La sessione resta nel profilo.",
-            text_color=COLORS["muted"],
-            wraplength=520,
-            justify="left",
-        ).pack(anchor="w", padx=20, pady=(0, 6))
+        self._save_bar(scroll, lambda: self._save_module("Mail"))
+        return frame
 
-        self.debug_var = tk.BooleanVar(value=False)
-        ctk.CTkCheckBox(
-            root,
-            text="Modalità DEBUG (URL, azioni, elementi, errori)",
-            variable=self.debug_var,
-            text_color=COLORS["text"],
-            fg_color=COLORS["accent"],
-            hover_color=COLORS["accent_hover"],
-        ).pack(anchor="w", padx=20, pady=4)
+    def _build_coin_transport_panel(self, parent: ctk.CTkFrame) -> ctk.CTkFrame:
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        scroll = self._scroll(frame)
+        from ui.modules.coin_transport_settings_panel import CoinTransportSettingsPanel
 
-        ctk.CTkLabel(
-            root, text="Timeout browser (ms)", text_color=COLORS["muted"]
-        ).pack(anchor="w", padx=20)
-        self.timeout_entry = ctk.CTkEntry(
-            root, height=36, fg_color=COLORS["input"], border_color=COLORS["border"]
+        panel = CoinTransportSettingsPanel(
+            scroll,
+            self.db,
+            on_status=lambda msg, ok: self._set_status(msg, ok=ok),
         )
-        self.timeout_entry.pack(fill="x", **pad)
+        # fill=x only: height must follow children so parent CTkScrollableFrame scrolls
+        panel.pack(fill="x", expand=False, anchor="n")
+        frame._coin_panel = panel  # noqa: SLF001
+        return frame
 
-        ctk.CTkLabel(
-            root,
-            text="URL portale eniSpace",
-            text_color=COLORS["muted"],
-        ).pack(anchor="w", padx=20)
-        self.url_entry = ctk.CTkEntry(
-            root,
+    def _build_stampa_panel(self, parent: ctk.CTkFrame) -> ctk.CTkFrame:
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        scroll = self._scroll(frame)
+        self._module_title(
+            scroll,
+            "Stampa / Download",
+            "Cartelle output, stampante e PDF",
+        )
+
+        dl = self._group(scroll, "Download")
+        self._label(dl, "Cartella download")
+        dl_row = ctk.CTkFrame(dl, fg_color="transparent")
+        dl_row.pack(fill="x", pady=(0, 4))
+        self.download_entry = ctk.CTkEntry(
+            dl_row, height=36, fg_color=COLORS["input"], border_color=COLORS["border"]
+        )
+        self.download_entry.pack(side="left", fill="x", expand=True)
+        ctk.CTkButton(
+            dl_row,
+            text="Sfoglia",
+            width=90,
             height=36,
-            placeholder_text="https://enispace.eni.com/it_IT/home.page",
-            fg_color=COLORS["input"],
-            border_color=COLORS["border"],
-        )
-        self.url_entry.pack(fill="x", **pad)
-
-        # --- Actions ---
-        self._section(root, "LOG / TEST — Acquisizione portale")
-        ctk.CTkButton(
-            root,
-            text="TEST ACCESSO ENISPACE",
-            height=40,
             fg_color=COLORS["panel"],
             hover_color=COLORS["border"],
-            border_width=1,
-            border_color=COLORS["accent"],
-            command=self._test_access,
-        ).pack(fill="x", **pad)
-
-        ctk.CTkButton(
-            root,
-            text="APRI CHROME (mappa portale)",
-            height=40,
-            fg_color=COLORS["panel"],
-            hover_color=COLORS["border"],
-            border_width=1,
-            border_color="#f59e0b",
-            command=self._record_nav,
-        ).pack(fill="x", **pad)
-
-        ctk.CTkButton(
-            root,
-            text="APRI FLUSSO DOCUMENTI (Ordini→Market→Filtri)",
-            height=40,
-            fg_color=COLORS["accent"],
-            hover_color=COLORS["accent_hover"],
-            command=self._open_document_flow,
-        ).pack(fill="x", **pad)
-
-        ctk.CTkButton(
-            root,
-            text="APRI ORDINI E CONSUNTIVI (eniSpace)",
-            height=40,
-            fg_color=COLORS["panel"],
-            hover_color=COLORS["border"],
-            border_width=1,
-            border_color="#4ade80",
-            command=self._open_ordini,
-        ).pack(fill="x", **pad)
-
-        ctk.CTkButton(
-            root,
-            text="APRI MARKETPLACE (ultimo URL imparato)",
-            height=40,
-            fg_color=COLORS["panel"],
-            hover_color=COLORS["border"],
-            border_width=1,
-            border_color="#38bdf8",
-            command=self._open_marketplace,
-        ).pack(fill="x", **pad)
-
-        # --- JARVIS ---
-        self._section(root, "JARVIS — Modalità supervisore")
-        self.jarvis_enabled_var = tk.BooleanVar(value=False)
+            command=self._browse_folder,
+        ).pack(side="left", padx=(8, 0))
+        self.open_folder_var = tk.BooleanVar(value=False)
         ctk.CTkCheckBox(
-            root,
-            text="Abilita JARVIS (preferenza; avvio da tab JARVIS o autostart)",
-            variable=self.jarvis_enabled_var,
+            dl,
+            text="Apri cartella dopo download",
+            variable=self.open_folder_var,
             text_color=COLORS["text"],
             fg_color=COLORS["accent"],
             hover_color=COLORS["accent_hover"],
-        ).pack(anchor="w", padx=20, pady=4)
+        ).pack(anchor="w", pady=4)
 
-        self.jarvis_autostart_var = tk.BooleanVar(value=False)
-        ctk.CTkCheckBox(
-            root,
-            text="Avvio automatico JARVIS all'apertura programma",
-            variable=self.jarvis_autostart_var,
-            text_color=COLORS["text"],
-            fg_color=COLORS["accent"],
-            hover_color=COLORS["accent_hover"],
-        ).pack(anchor="w", padx=20, pady=4)
-
-        self.jarvis_simulation_var = tk.BooleanVar(value=False)
-        ctk.CTkCheckBox(
-            root,
-            text="Modalità simulazione (NO download finale / NO stampa)",
-            variable=self.jarvis_simulation_var,
-            text_color=COLORS["text"],
-            fg_color="#f59e0b",
-            hover_color="#d97706",
-        ).pack(anchor="w", padx=20, pady=4)
-        ctk.CTkLabel(
-            root,
-            text="Se attiva, in UI compare il banner «JARVIS — SIMULAZIONE».",
-            text_color=COLORS["muted"],
-            wraplength=520,
-            justify="left",
-        ).pack(anchor="w", padx=20, pady=(0, 4))
-
-        ctk.CTkLabel(
-            root,
-            text="Intervallo controllo mail (secondi, default 60)",
-            text_color=COLORS["muted"],
-        ).pack(anchor="w", padx=20)
-        self.jarvis_interval_entry = ctk.CTkEntry(
-            root, height=36, fg_color=COLORS["input"], border_color=COLORS["border"]
-        )
-        self.jarvis_interval_entry.pack(fill="x", **pad)
-
-        ctk.CTkLabel(
-            root, text="Numero massimo retry", text_color=COLORS["muted"]
-        ).pack(anchor="w", padx=20)
-        self.jarvis_retries_entry = ctk.CTkEntry(
-            root, height=36, fg_color=COLORS["input"], border_color=COLORS["border"]
-        )
-        self.jarvis_retries_entry.pack(fill="x", **pad)
-
-        ctk.CTkLabel(
-            root,
-            text="Stampante (vuoto = predefinita Windows)",
-            text_color=COLORS["muted"],
-        ).pack(anchor="w", padx=20)
-        self.jarvis_printer_entry = ctk.CTkEntry(
-            root, height=36, fg_color=COLORS["input"], border_color=COLORS["border"]
-        )
-        self.jarvis_printer_entry.pack(fill="x", **pad)
-
-        ctk.CTkLabel(
-            root,
-            text="Cartella download JARVIS (vuoto = cartella globale)",
-            text_color=COLORS["muted"],
-        ).pack(anchor="w", padx=20)
+        pr = self._group(scroll, "Stampa e PDF")
+        self._label(pr, "Stampante (vuoto = predefinita Windows)")
+        self.jarvis_printer_entry = self._entry(pr)
+        self._label(pr, "Cartella download supervisore (vuoto = cartella globale)")
+        jdl_row = ctk.CTkFrame(pr, fg_color="transparent")
+        jdl_row.pack(fill="x", pady=(0, 4))
         self.jarvis_dl_entry = ctk.CTkEntry(
-            root, height=36, fg_color=COLORS["input"], border_color=COLORS["border"]
+            jdl_row, height=36, fg_color=COLORS["input"], border_color=COLORS["border"]
         )
-        self.jarvis_dl_entry.pack(fill="x", **pad)
-
+        self.jarvis_dl_entry.pack(side="left", fill="x", expand=True)
+        ctk.CTkButton(
+            jdl_row,
+            text="Sfoglia",
+            width=90,
+            height=36,
+            fg_color=COLORS["panel"],
+            hover_color=COLORS["border"],
+            command=self._browse_jarvis_folder,
+        ).pack(side="left", padx=(8, 0))
         self.jarvis_keep_pdfs_var = tk.BooleanVar(value=True)
         ctk.CTkCheckBox(
-            root,
+            pr,
             text="Mantieni PDF scaricati",
             variable=self.jarvis_keep_pdfs_var,
             text_color=COLORS["text"],
             fg_color=COLORS["accent"],
             hover_color=COLORS["accent_hover"],
-        ).pack(anchor="w", padx=20, pady=4)
+        ).pack(anchor="w", pady=4)
 
+        self._save_bar(scroll, lambda: self._save_module("Stampa / Download"))
+        return frame
+
+    def _build_remote_panel(self, parent: ctk.CTkFrame) -> ctk.CTkFrame:
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        scroll = self._scroll(frame)
+        self._module_title(
+            scroll,
+            "Remote & Cloud",
+            "Canale sottile Agent: messaggi/stato in ingresso, "
+            "WAKE / DEACTIVATE Supervisor in uscita (non orchestrazione job).",
+        )
+        card = self._group(scroll, "Configurazione Agent remota")
+        self._remote_labels: dict[str, ctk.CTkLabel] = {}
+        for key, title in [
+            ("enabled", "Remote abilitato"),
+            ("mode", "Modalità"),
+            ("device_id", "Device ID"),
+            ("device_name", "Device name"),
+            ("policy", "Execution policy"),
+            ("supabase_url", "Supabase URL"),
+            ("anon", "Supabase anon key"),
+            ("token", "VISION_AGENT_TOKEN"),
+            ("heartbeat", "Heartbeat (s)"),
+            ("poll", "Command poll (s)"),
+        ]:
+            row = ctk.CTkFrame(card, fg_color="transparent")
+            row.pack(fill="x", pady=4)
+            row.grid_columnconfigure(1, weight=1)
+            ctk.CTkLabel(
+                row,
+                text=title,
+                anchor="w",
+                text_color=COLORS["muted"],
+                font=ctk.CTkFont(size=12),
+            ).grid(row=0, column=0, sticky="w", padx=(0, 16))
+            lab = ctk.CTkLabel(
+                row,
+                text="—",
+                anchor="w",
+                text_color=COLORS["text"],
+                font=ctk.CTkFont(size=12, weight="bold"),
+            )
+            lab.grid(row=0, column=1, sticky="ew")
+            self._remote_labels[key] = lab
+        ctk.CTkLabel(
+            card,
+            text=(
+                "I valori provengono da .env / remote.env. "
+                "Il token non viene mai mostrato in chiaro. "
+                "Nessuna service_role in questa UI. "
+                "Policy tipica: status_only = GET_STATUS + WAKE_SUPERVISOR + "
+                "DEACTIVATE_SUPERVISOR."
+            ),
+            text_color=COLORS["muted"],
+            wraplength=640,
+            justify="left",
+            font=ctk.CTkFont(size=11),
+        ).pack(anchor="w", pady=(10, 0))
+
+        live = self._group(scroll, "Stato runtime Agent")
+        self._remote_live_labels: dict[str, ctk.CTkLabel] = {}
+        for key, title in [
+            ("runtime", "Stato Agent"),
+            ("last_error", "Ultimo errore"),
+        ]:
+            row = ctk.CTkFrame(live, fg_color="transparent")
+            row.pack(fill="x", pady=4)
+            row.grid_columnconfigure(1, weight=1)
+            ctk.CTkLabel(
+                row,
+                text=title,
+                anchor="w",
+                text_color=COLORS["muted"],
+                font=ctk.CTkFont(size=12),
+            ).grid(row=0, column=0, sticky="w", padx=(0, 16))
+            lab = ctk.CTkLabel(
+                row,
+                text="—",
+                anchor="w",
+                text_color=COLORS["text"],
+                font=ctk.CTkFont(size=12, weight="bold"),
+                wraplength=520,
+                justify="left",
+            )
+            lab.grid(row=0, column=1, sticky="ew")
+            self._remote_live_labels[key] = lab
+
+        btn_row = ctk.CTkFrame(scroll, fg_color="transparent")
+        btn_row.pack(anchor="w", padx=8, pady=(4, 16))
+        ctk.CTkButton(
+            btn_row,
+            text="Aggiorna stato",
+            height=36,
+            width=160,
+            fg_color=COLORS["panel"],
+            border_width=1,
+            border_color=COLORS["accent"],
+            hover_color=COLORS["border"],
+            command=self._refresh_remote_panel,
+        ).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(
+            btn_row,
+            text="Testa connessione Agent",
+            height=36,
+            width=200,
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["border"],
+            command=self._test_remote_agent_connection,
+        ).pack(side="left")
+        return frame
+
+    def _find_remote_agent(self):
+        w = self
+        for _ in range(8):
+            if w is None:
+                break
+            agent = getattr(w, "remote_agent", None)
+            if agent is not None:
+                return agent
+            w = getattr(w, "master", None)
+        return None
+
+    def _refresh_remote_panel(self) -> None:
+        try:
+            from app.remote.config import RemoteConfig
+
+            cfg = RemoteConfig.load()
+        except Exception as exc:
+            for lab in self._remote_labels.values():
+                lab.configure(text="Errore lettura config")
+            self._set_status(f"Remote: {exc}", ok=False)
+            return
+        token_state = "Configurato" if bool(cfg.vision_agent_token) else "Non configurato"
+        anon_state = "Presente" if bool(cfg.supabase_anon_key) else "Assente"
+        url = cfg.supabase_url or "—"
+        if len(url) > 64:
+            url = url[:61] + "…"
+        values = {
+            "enabled": "Sì" if cfg.enabled else "No",
+            "mode": cfg.mode or "—",
+            "device_id": cfg.device_id or "—",
+            "device_name": cfg.device_name or "—",
+            "policy": cfg.remote_execution_policy or "—",
+            "supabase_url": url,
+            "anon": anon_state,
+            "token": token_state,
+            "heartbeat": str(cfg.heartbeat_seconds),
+            "poll": str(cfg.command_poll_seconds),
+        }
+        for key, val in values.items():
+            self._remote_labels[key].configure(text=val)
+
+        runtime = "Disabilitato" if not cfg.enabled else f"Abilitato ({cfg.mode})"
+        last_err = "—"
+        agent = self._find_remote_agent()
+        if agent is not None:
+            st = str(getattr(agent, "status", "") or "—")
+            en = bool(getattr(agent, "enabled", False))
+            running = bool(getattr(agent, "is_running", False))
+            runtime = f"{st}" + (" · running" if running else "")
+            if not en:
+                runtime = f"DISABLED ({st})"
+            err = str(getattr(agent, "last_error", "") or "").strip()
+            last_err = err or "—"
+        if hasattr(self, "_remote_live_labels"):
+            self._remote_live_labels["runtime"].configure(text=runtime)
+            self._remote_live_labels["last_error"].configure(text=last_err)
+        self._set_status("Stato Remote aggiornato", ok=True)
+
+    def _test_remote_agent_connection(self) -> None:
+        def _work() -> None:
+            try:
+                from app.remote.client import create_backend
+                from app.remote.config import RemoteConfig
+
+                cfg = RemoteConfig.load()
+                if not cfg.enabled:
+                    msg = "Remote disabilitato (VISION_REMOTE_ENABLED=false)"
+                    self.after(0, lambda: self._finish_remote_probe(False, msg))
+                    return
+                if cfg.mode == "mock":
+                    msg = "Modalità mock — nessun cloud da testare"
+                    self.after(0, lambda: self._finish_remote_probe(True, msg))
+                    return
+                backend = create_backend(cfg)
+                probe = getattr(backend, "probe_agent_rpc", None)
+                if callable(probe):
+                    ok, msg = probe()
+                else:
+                    backend.connect()
+                    ok, msg = True, "Backend raggiungibile"
+                self.after(0, lambda o=ok, m=msg: self._finish_remote_probe(o, m))
+            except Exception as exc:
+                err = str(exc)[:240]
+                self.after(0, lambda e=err: self._finish_remote_probe(False, e))
+
+        self._set_status("Test connessione Agent in corso…", ok=True)
+        threading.Thread(target=_work, name="remote-probe", daemon=True).start()
+
+    def _finish_remote_probe(self, ok: bool, msg: str) -> None:
+        if hasattr(self, "_remote_live_labels"):
+            self._remote_live_labels["last_error"].configure(text=("—" if ok else msg))
+            if ok:
+                self._remote_live_labels["runtime"].configure(text="PROBE OK")
+            else:
+                self._remote_live_labels["runtime"].configure(text="PROBE FAILED")
+        self._set_status(
+            ("Connessione Agent OK" if ok else f"Agent irraggiungibile: {msg}"),
+            ok=ok,
+        )
+        if ok:
+            messagebox.showinfo(APP_NAME, msg)
+        else:
+            messagebox.showerror(APP_NAME, f"Agent irraggiungibile:\n\n{msg}")
+
+    def _build_supervisor_panel(self, parent: ctk.CTkFrame) -> ctk.CTkFrame:
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        scroll = self._scroll(frame)
+        self._module_title(
+            scroll,
+            "Supervisor",
+            "VISION Supervisor — preferenze runtime (chiavi config invariate)",
+        )
+
+        g = self._group(scroll, "Avvio e comportamento")
+        self.jarvis_enabled_var = tk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            g,
+            text="Abilita VISION Supervisor (preferenza; avvio da tab Assistente o autostart)",
+            variable=self.jarvis_enabled_var,
+            text_color=COLORS["text"],
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["accent_hover"],
+        ).pack(anchor="w", pady=4)
+        self.jarvis_autostart_var = tk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            g,
+            text="Avvio automatico Supervisor all'apertura programma",
+            variable=self.jarvis_autostart_var,
+            text_color=COLORS["text"],
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["accent_hover"],
+        ).pack(anchor="w", pady=4)
+        self.jarvis_simulation_var = tk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            g,
+            text="Modalità simulazione (NO download finale / NO stampa)",
+            variable=self.jarvis_simulation_var,
+            text_color=COLORS["text"],
+            fg_color="#f59e0b",
+            hover_color="#d97706",
+        ).pack(anchor="w", pady=4)
+        ctk.CTkLabel(
+            g,
+            text="Se attiva, in UI compare il banner «VISION — SIMULAZIONE».",
+            text_color=COLORS["muted"],
+            wraplength=640,
+            justify="left",
+            font=ctk.CTkFont(size=11),
+        ).pack(anchor="w", pady=(0, 4))
+
+        self._label(g, "Intervallo controllo mail (secondi, default 60)")
+        self.jarvis_interval_entry = self._entry(g)
+        self._label(g, "Numero massimo retry")
+        self.jarvis_retries_entry = self._entry(g)
+
+        dbg = self._group(scroll, "Debug supervisore")
         self.jarvis_debug_var = tk.BooleanVar(value=False)
         ctk.CTkCheckBox(
-            root,
-            text="Debug JARVIS",
+            dbg,
+            text="Debug Supervisor",
             variable=self.jarvis_debug_var,
             text_color=COLORS["text"],
             fg_color=COLORS["accent"],
             hover_color=COLORS["accent_hover"],
-        ).pack(anchor="w", padx=20, pady=4)
+        ).pack(anchor="w", pady=4)
 
-        ctk.CTkLabel(
-            root,
-            text="Animazioni avatar JARVIS",
-            text_color=COLORS["muted"],
-        ).pack(anchor="w", padx=20, pady=(8, 0))
-        self.jarvis_avatar_level_var = tk.StringVar(value="Complete")
-        self.jarvis_avatar_level_menu = ctk.CTkOptionMenu(
-            root,
-            values=["Complete", "Ridotte", "Disattivate"],
-            variable=self.jarvis_avatar_level_var,
+        avatar = self._group(scroll, "Avatar VISION")
+        from utils.avatar_models import (
+            AVATAR_MODE_3D,
+            DEFAULT_AVATAR_MODEL_ID,
+            avatar_mode_label,
+            avatar_model_label,
+            list_avatar_models,
+        )
+
+        self._label(avatar, "Modalità avatar")
+        self.jarvis_avatar_mode_var = tk.StringVar(value=avatar_mode_label(AVATAR_MODE_3D))
+        self.jarvis_avatar_mode_menu = ctk.CTkOptionMenu(
+            avatar,
+            values=["Avatar 3D (GLB)", "Avatar PNG"],
+            variable=self.jarvis_avatar_mode_var,
+            command=lambda _v: self._sync_avatar_mode_controls(),
             fg_color=COLORS["input"],
             button_color=COLORS["accent"],
             button_hover_color=COLORS["accent_hover"],
             dropdown_fg_color=COLORS["panel"],
             height=36,
         )
-        self.jarvis_avatar_level_menu.pack(fill="x", **pad)
+        self.jarvis_avatar_mode_menu.pack(fill="x", pady=(0, 4))
         ctk.CTkLabel(
-            root,
-            text="Solo interfaccia: non modifica la logica del supervisore.",
-            text_color=COLORS["muted"],
-            wraplength=520,
-            justify="left",
-        ).pack(anchor="w", padx=20, pady=(0, 4))
-
-        ctk.CTkLabel(
-            root,
+            avatar,
             text=(
-                "«Apri Chrome» NON registra un account: apre il browser\n"
-                "controllato dal programma. Tu navighi eniSpace (login, ordini,\n"
-                "modulo di acquisizione); il log salva le URL visitate.\n\n"
-                "Il link Marketplace (UUID.abap-web...) può cambiare: il programma\n"
-                "lo impara automaticamente quando lo apri da eniSpace.\n\n"
-                "Flusso operativo:\n"
-                "  1. Ordini e consuntivi (eniSpace)\n"
-                "  2. Marketplace Launchpad\n"
-                "  3. Dashboard filtri #ZMP_DSH-DISPLAY&/\n"
-                "Usa «Apri flusso documenti» oppure CERCA ORDINE."
+                "Avatar 3D usa i modelli GLB e i pack sprite "
+                "(clip Meshy in glb_frames, oppure model_frames/<id>/clips). "
+                "Avatar PNG usa le lastre Character Bible; gli occhi cambiano "
+                "colore in base allo stato (idle, ascolto, parlato, lavorazione, alert)."
             ),
             text_color=COLORS["muted"],
-            wraplength=480,
+            font=ctk.CTkFont(size=11),
+            wraplength=640,
             justify="left",
-            font=ctk.CTkFont(size=12),
-        ).pack(anchor="w", padx=20, pady=(0, 10))
+        ).pack(anchor="w", pady=(0, 8))
 
-        ctk.CTkButton(
-            root,
-            text="SALVA IMPOSTAZIONI",
-            height=42,
+        self._label(avatar, "Modello 3D")
+        self._avatar_model_choices = list_avatar_models()
+        labels = [lab for _, lab in self._avatar_model_choices] or [
+            avatar_model_label(DEFAULT_AVATAR_MODEL_ID)
+        ]
+        self.jarvis_avatar_model_var = tk.StringVar(value=labels[0])
+        self.jarvis_avatar_model_menu = ctk.CTkOptionMenu(
+            avatar,
+            values=labels,
+            variable=self.jarvis_avatar_model_var,
+            fg_color=COLORS["input"],
+            button_color=COLORS["accent"],
+            button_hover_color=COLORS["accent_hover"],
+            dropdown_fg_color=COLORS["panel"],
+            height=36,
+        )
+        self.jarvis_avatar_model_menu.pack(fill="x", pady=(0, 4))
+        self.jarvis_avatar_add_glb_btn = ctk.CTkButton(
+            avatar,
+            text="Aggiungi modello GLB…",
+            command=self._add_avatar_glb,
+            fg_color=COLORS["panel"],
+            hover_color=COLORS["accent_hover"],
+            border_width=1,
+            border_color=COLORS["accent"],
+            text_color=COLORS["text"],
+            height=34,
+        )
+        self.jarvis_avatar_add_glb_btn.pack(fill="x", pady=(0, 4))
+        self.jarvis_avatar_import_sprite_btn = ctk.CTkButton(
+            avatar,
+            text="Importa pack sprite…",
+            command=self._import_avatar_sprite_pack,
+            fg_color=COLORS["panel"],
+            hover_color=COLORS["accent_hover"],
+            border_width=1,
+            border_color=COLORS["accent"],
+            text_color=COLORS["text"],
+            height=34,
+        )
+        self.jarvis_avatar_import_sprite_btn.pack(fill="x", pady=(0, 4))
+        ctk.CTkLabel(
+            avatar,
+            text=(
+                "Scegli il pack 3D mostrato nel pannello avatar. "
+                "Meshy usa i clip in glb_frames; altri modelli usano "
+                "model_frames/<id>/ (clip animati o anteprima statica). "
+                "Importa un pack sprite (cartella con clips/ + manifest.json) "
+                "o aggiungi un GLB. Solo UI — vedi SPRITE_PACK_SPEC.md."
+            ),
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=11),
+            wraplength=640,
+            justify="left",
+        ).pack(anchor="w")
+        self._sync_avatar_mode_controls()
+
+        self._save_bar(scroll, lambda: self._save_module("Supervisor"))
+        return frame
+
+    def _build_diagnostica_panel(self, parent: ctk.CTkFrame) -> ctk.CTkFrame:
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        scroll = self._scroll(frame)
+        self._module_title(
+            scroll,
+            "Diagnostica",
+            "Debug applicazione, strumenti portale e log",
+        )
+
+        dbg = self._group(scroll, "Debug applicazione")
+        self.debug_var = tk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            dbg,
+            text="Modalità DEBUG",
+            variable=self.debug_var,
+            text_color=COLORS["text"],
             fg_color=COLORS["accent"],
             hover_color=COLORS["accent_hover"],
-            font=ctk.CTkFont(weight="bold"),
-            command=self._save_all,
-        ).pack(fill="x", padx=20, pady=(12, 20))
+        ).pack(anchor="w", pady=4)
+        ctk.CTkLabel(
+            dbg,
+            text="Quando attiva: logga URL, azioni, elementi ed errori nel log tecnico.",
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=11),
+            wraplength=640,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 4))
 
-    def _section(self, parent: ctk.CTkScrollableFrame, title: str) -> None:
+        logs = self._group(scroll, "Log")
+        try:
+            from utils.paths import logs_dir
+
+            log_path = str(logs_dir())
+        except Exception:
+            log_path = "logs/"
+        ctk.CTkLabel(
+            logs,
+            text="Directory log (sola lettura)",
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=12),
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            logs,
+            text=log_path,
+            text_color=COLORS["text"],
+            font=ctk.CTkFont(size=12, weight="bold"),
+            wraplength=640,
+            justify="left",
+        ).pack(anchor="w", pady=(4, 0))
+
+        tools = self._group(scroll, "Strumenti portale EniSpace")
+        for text, cmd, border in [
+            ("Test accesso EniSpace", self._test_access, COLORS["accent"]),
+            ("Apri Chrome (mappa portale)", self._record_nav, "#f59e0b"),
+            ("Apri flusso documenti (Ordini→Market→Filtri)", self._open_document_flow, COLORS["accent"]),
+            ("Apri Ordini e Consuntivi (eniSpace)", self._open_ordini, "#4ade80"),
+            ("Apri Marketplace (ultimo URL imparato)", self._open_marketplace, "#38bdf8"),
+        ]:
+            ctk.CTkButton(
+                tools,
+                text=text,
+                height=38,
+                fg_color=COLORS["panel"],
+                hover_color=COLORS["border"],
+                border_width=1,
+                border_color=border,
+                command=cmd,
+            ).pack(fill="x", pady=4)
+
+        ctk.CTkLabel(
+            scroll,
+            text=(
+                "«Apri Chrome» NON registra un account: apre il browser "
+                "controllato dal programma. Tu navighi eniSpace; il log salva le URL visitate.\n"
+                "Il link Marketplace può cambiare: il programma lo impara automaticamente."
+            ),
+            text_color=COLORS["muted"],
+            wraplength=640,
+            justify="left",
+            font=ctk.CTkFont(size=11),
+        ).pack(anchor="w", padx=12, pady=(0, 8))
+
+        self._save_bar(scroll, lambda: self._save_module("Diagnostica"))
+        return frame
+
+    def _save_module(self, module_name: str) -> None:
+        try:
+            self._save_all(module_name=module_name)
+        except Exception as exc:
+            self._set_status(f"Errore salvataggio {module_name}", ok=False)
+            messagebox.showerror(
+                "Impostazioni",
+                f"Errore nel salvataggio del modulo {module_name}.\n{exc}",
+                parent=self,
+            )
+
+    def _browse_jarvis_folder(self) -> None:
+        current = self.jarvis_dl_entry.get().strip() or self.download_entry.get().strip()
+        if not current:
+            current = str(default_download_dir())
+        chosen = filedialog.askdirectory(initialdir=current, parent=self)
+        if chosen:
+            self.jarvis_dl_entry.delete(0, "end")
+            self.jarvis_dl_entry.insert(0, chosen)
+
+    def _toggle_mail_password(self) -> None:
+        self.imap_pass_entry.configure(
+            show="" if self._show_mail_password.get() else "•"
+        )
+
+    def _section(self, parent, title: str) -> None:
+        """Compat: intestazione sezione (legacy helpers / wizard-like callers)."""
         card = ctk.CTkFrame(
             parent,
             fg_color=COLORS["panel"],
@@ -706,6 +1283,8 @@ class SettingsWindow(ctk.CTkToplevel):
             0, settings.download_folder or str(default_download_dir())
         )
         self.hidden_var.set(bool(settings.browser_hidden))
+        if hasattr(self, "chrome_system_var"):
+            self.chrome_system_var.set(bool(getattr(settings, "chrome_use_system_profile", False)))
         self.debug_var.set(settings.debug_mode)
         self.open_folder_var.set(settings.open_folder_after_download)
         self.timeout_entry.delete(0, "end")
@@ -759,6 +1338,176 @@ class SettingsWindow(ctk.CTkToplevel):
             level, "Complete"
         )
         self.jarvis_avatar_level_var.set(label)
+        if hasattr(self, "jarvis_avatar_mode_var"):
+            from utils.avatar_models import avatar_mode_label, normalize_avatar_mode
+
+            mode = normalize_avatar_mode(
+                getattr(settings, "jarvis_avatar_mode", None)
+            )
+            self.jarvis_avatar_mode_var.set(avatar_mode_label(mode))
+        if hasattr(self, "jarvis_avatar_model_var"):
+            from utils.avatar_models import (
+                avatar_model_label,
+                list_avatar_models,
+                normalize_avatar_model_id,
+            )
+
+            mid = normalize_avatar_model_id(
+                getattr(settings, "jarvis_avatar_model", None)
+            )
+            choices = list_avatar_models()
+            labels = [lab for _, lab in choices]
+            if labels and hasattr(self, "jarvis_avatar_model_menu"):
+                try:
+                    self.jarvis_avatar_model_menu.configure(values=labels)
+                except Exception:
+                    pass
+            self.jarvis_avatar_model_var.set(avatar_model_label(mid))
+        if hasattr(self, "_sync_avatar_mode_controls"):
+            self._sync_avatar_mode_controls()
+
+    def _sync_avatar_mode_controls(self) -> None:
+        """Enable GLB picker only in Avatar 3D mode."""
+        from utils.avatar_models import AVATAR_MODE_3D, AVATAR_MODE_PNG, avatar_mode_from_label
+
+        mode = AVATAR_MODE_3D
+        if hasattr(self, "jarvis_avatar_mode_var"):
+            mode = avatar_mode_from_label(self.jarvis_avatar_mode_var.get())
+        png = mode == AVATAR_MODE_PNG
+        state = "disabled" if png else "normal"
+        for widget_name in (
+            "jarvis_avatar_model_menu",
+            "jarvis_avatar_add_glb_btn",
+            "jarvis_avatar_import_sprite_btn",
+        ):
+            w = getattr(self, widget_name, None)
+            if w is None:
+                continue
+            try:
+                w.configure(state=state)
+            except Exception:
+                pass
+
+    def _refresh_avatar_model_menu(self, *, select_id: str = "") -> None:
+        from utils.avatar_models import (
+            DEFAULT_AVATAR_MODEL_ID,
+            avatar_model_label,
+            list_avatar_models,
+            normalize_avatar_model_id,
+        )
+
+        choices = list_avatar_models()
+        self._avatar_model_choices = choices
+        labels = [lab for _, lab in choices] or [
+            avatar_model_label(DEFAULT_AVATAR_MODEL_ID)
+        ]
+        mid = normalize_avatar_model_id(select_id) if select_id else ""
+        label = avatar_model_label(mid) if mid else (
+            self.jarvis_avatar_model_var.get() if hasattr(self, "jarvis_avatar_model_var") else labels[0]
+        )
+        if label not in labels:
+            label = labels[0]
+        if hasattr(self, "jarvis_avatar_model_menu"):
+            try:
+                self.jarvis_avatar_model_menu.configure(values=labels)
+            except Exception:
+                pass
+        if hasattr(self, "jarvis_avatar_model_var"):
+            self.jarvis_avatar_model_var.set(label)
+
+    def _add_avatar_glb(self) -> None:
+        """Copy a user GLB into assets/avatar/models and refresh the dropdown."""
+        from utils.avatar_models import (
+            AVATAR_MODE_PNG,
+            avatar_mode_from_label,
+            avatar_model_label,
+            import_avatar_glb,
+            try_render_avatar_preview,
+        )
+
+        if hasattr(self, "jarvis_avatar_mode_var"):
+            if avatar_mode_from_label(self.jarvis_avatar_mode_var.get()) == AVATAR_MODE_PNG:
+                messagebox.showinfo(
+                    "Avatar PNG",
+                    "Passa a «Avatar 3D (GLB)» per aggiungere un modello.",
+                    parent=self,
+                )
+                return
+        chosen = filedialog.askopenfilename(
+            parent=self,
+            title="Seleziona modello GLB",
+            filetypes=[("glTF Binary", "*.glb"), ("Tutti i file", "*.*")],
+        )
+        if not chosen:
+            return
+        try:
+            mid, dest = import_avatar_glb(chosen, render_preview=False)
+        except Exception as exc:
+            messagebox.showerror(
+                "Import GLB",
+                f"Impossibile importare il modello:\n{exc}",
+                parent=self,
+            )
+            return
+        self._refresh_avatar_model_menu(select_id=mid)
+
+        def _bg_preview() -> None:
+            try:
+                try_render_avatar_preview(mid)
+            except Exception:
+                pass
+
+        threading.Thread(target=_bg_preview, daemon=True).start()
+        messagebox.showinfo(
+            "Modello aggiunto",
+            (
+                f"Importato «{avatar_model_label(mid)}» → {dest.name}\n"
+                "Anteprima in generazione in background (Blender se disponibile)."
+            ),
+            parent=self,
+        )
+
+    def _import_avatar_sprite_pack(self) -> None:
+        """Copy a sprite pack folder into model_frames/<id>/ and refresh dropdown."""
+        from utils.avatar_models import (
+            AVATAR_MODE_PNG,
+            avatar_mode_from_label,
+            avatar_model_label,
+            import_avatar_sprite_pack,
+        )
+
+        if hasattr(self, "jarvis_avatar_mode_var"):
+            if avatar_mode_from_label(self.jarvis_avatar_mode_var.get()) == AVATAR_MODE_PNG:
+                messagebox.showinfo(
+                    "Avatar PNG",
+                    "Passa a «Avatar 3D (GLB)» per importare un pack sprite.",
+                    parent=self,
+                )
+                return
+        chosen = filedialog.askdirectory(
+            parent=self,
+            title="Seleziona cartella pack sprite (con clips/)",
+        )
+        if not chosen:
+            return
+        try:
+            mid, dest = import_avatar_sprite_pack(chosen)
+        except Exception as exc:
+            messagebox.showerror(
+                "Import pack sprite",
+                f"Impossibile importare il pack:\n{exc}",
+                parent=self,
+            )
+            return
+        self._refresh_avatar_model_menu(select_id=mid)
+        messagebox.showinfo(
+            "Pack sprite importato",
+            (
+                f"Importato «{avatar_model_label(mid)}» → {dest}\n"
+                "Seleziona il modello e salva. Clip mancanti usano idle/preview."
+            ),
+            parent=self,
+        )
 
     def _browse_folder(self) -> None:
         current = self.download_entry.get().strip() or str(default_download_dir())
@@ -806,6 +1555,9 @@ class SettingsWindow(ctk.CTkToplevel):
         )
         settings.browser_hidden = bool(self.hidden_var.get())
         settings.browser_visible = not settings.browser_hidden
+        if hasattr(self, "chrome_system_var"):
+            settings.chrome_use_system_profile = bool(self.chrome_system_var.get())
+            settings.chrome_profile_directory = "Default"
         settings.debug_mode = bool(self.debug_var.get())
         settings.open_folder_after_download = bool(self.open_folder_var.get())
         settings.enispace_base_url = self.url_entry.get().strip()
@@ -870,6 +1622,21 @@ class SettingsWindow(ctk.CTkToplevel):
             "Ridotte": "reduced",
             "Disattivate": "off",
         }.get(avatar_label, "full")
+        if hasattr(self, "jarvis_avatar_mode_var"):
+            from utils.avatar_models import avatar_mode_from_label
+
+            settings.jarvis_avatar_mode = avatar_mode_from_label(
+                self.jarvis_avatar_mode_var.get()
+            )
+        if hasattr(self, "jarvis_avatar_model_var"):
+            from utils.avatar_models import (
+                DEFAULT_AVATAR_MODEL_ID,
+                avatar_model_id_from_label,
+            )
+
+            settings.jarvis_avatar_model = avatar_model_id_from_label(
+                self.jarvis_avatar_model_var.get() or DEFAULT_AVATAR_MODEL_ID
+            )
         return settings
 
     def _get_imap_folder(self) -> str:
@@ -1106,7 +1873,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         threading.Thread(target=runner, daemon=True).start()
 
-    def _save_all(self) -> None:
+    def _save_all(self, module_name: Optional[str] = None) -> None:
         settings = self._collect_settings()
         Path(settings.download_folder).mkdir(parents=True, exist_ok=True)
         self.db.save_settings(settings)
@@ -1134,9 +1901,15 @@ class SettingsWindow(ctk.CTkToplevel):
         )
         if self.on_saved:
             self.on_saved()
-        messagebox.showinfo("Impostazioni", "Impostazioni salvate.", parent=self)
+        label = module_name or "Impostazioni"
+        messagebox.showinfo(
+            "Impostazioni",
+            f"{label}: modifiche salvate.",
+            parent=self,
+        )
+        self._set_status(f"{label}: salvato", ok=True)
         if self.on_activity:
-            self.on_activity("Impostazioni aggiornate.")
+            self.on_activity(f"{label}: impostazioni aggiornate.")
 
     def _test_access(self) -> None:
         self._save_all_silent()
@@ -1175,6 +1948,65 @@ class SettingsWindow(ctk.CTkToplevel):
         )
         if self.on_saved:
             self.on_saved()
+
+
+
+class SettingsWindow(ctk.CTkToplevel):
+    """Dialog Impostazioni — monta SettingsPage (compat)."""
+
+    def __init__(
+        self,
+        master: ctk.CTk,
+        db: "Database",
+        credentials: "CredentialService",
+        enispace: "EniSpaceService",
+        *,
+        on_saved: Optional[Callable[[], None]] = None,
+        on_test_access: Optional[Callable[[], None]] = None,
+        on_record_navigation: Optional[Callable[[], None]] = None,
+        on_open_marketplace: Optional[Callable[[], None]] = None,
+        on_open_ordini: Optional[Callable[[], None]] = None,
+        on_open_document_flow: Optional[Callable[[], None]] = None,
+        on_activity: Optional[Callable[[str], None]] = None,
+    ) -> None:
+        super().__init__(master)
+        self.title(f"Impostazioni — {APP_NAME}")
+        self.geometry("1120x720")
+        self.minsize(900, 600)
+        self.configure(fg_color=COLORS["bg"])
+        self.transient(master)
+        self.grab_set()
+        apply_app_icon(self)
+        try:
+            from ui.glass import schedule_window_glass
+            from ui.theme import GLASS_ACRYLIC_ALPHA, GLASS_TINT, GLASS_WINDOW_ALPHA
+
+            schedule_window_glass(
+                self,
+                delay_ms=80,
+                alpha=GLASS_WINDOW_ALPHA,
+                tint=GLASS_TINT,
+                acrylic_alpha=GLASS_ACRYLIC_ALPHA,
+            )
+        except Exception:
+            pass
+        self.page = SettingsPage(
+            self,
+            db,
+            credentials,
+            enispace,
+            on_saved=on_saved,
+            on_test_access=on_test_access,
+            on_record_navigation=on_record_navigation,
+            on_open_marketplace=on_open_marketplace,
+            on_open_ordini=on_open_ordini,
+            on_open_document_flow=on_open_document_flow,
+            on_activity=on_activity,
+            show_chrome=True,
+        )
+        self.page.pack(fill="both", expand=True)
+        self.after(50, self.focus)
+
 
 
 class SetupWizard(ctk.CTkToplevel):

@@ -27,6 +27,8 @@ class CommandStatus(StrEnum):
 
 class CommandType(StrEnum):
     GET_STATUS = "GET_STATUS"
+    WAKE_SUPERVISOR = "WAKE_SUPERVISOR"
+    DEACTIVATE_SUPERVISOR = "DEACTIVATE_SUPERVISOR"
     CHECK_ENISPACE_MAIL = "CHECK_ENISPACE_MAIL"
     RETRY_JOB = "RETRY_JOB"
     PAUSE_MODULE = "PAUSE_MODULE"
@@ -41,6 +43,8 @@ COMMAND_WHITELIST: frozenset[str] = frozenset(c.value for c in CommandType)
 IMPLEMENTED_COMMANDS: frozenset[str] = frozenset(
     {
         CommandType.GET_STATUS,
+        CommandType.WAKE_SUPERVISOR,
+        CommandType.DEACTIVATE_SUPERVISOR,
         CommandType.CHECK_ENISPACE_MAIL,
         CommandType.RETRY_JOB,
         CommandType.PAUSE_MODULE,
@@ -56,12 +60,18 @@ STUB_COMMANDS: frozenset[str] = frozenset(
     }
 )
 
-# Policy di fase: solo GET_STATUS remoto autorizzato (non blocca path locali)
+# Policy di fase thin channel: status + lifecycle Supervisor (non job orchestration)
 REMOTE_EXECUTION_POLICY_STATUS_ONLY = "status_only"
 REMOTE_EXECUTION_POLICY_FULL = "full"
 DEFAULT_REMOTE_EXECUTION_POLICY = REMOTE_EXECUTION_POLICY_STATUS_ONLY
 
-REMOTE_STATUS_ONLY_ALLOWED: frozenset[str] = frozenset({CommandType.GET_STATUS})
+REMOTE_STATUS_ONLY_ALLOWED: frozenset[str] = frozenset(
+    {
+        CommandType.GET_STATUS,
+        CommandType.WAKE_SUPERVISOR,
+        CommandType.DEACTIVATE_SUPERVISOR,
+    }
+)
 
 
 def is_remote_command_allowed(command_type: str, *, policy: str) -> bool:
@@ -69,7 +79,7 @@ def is_remote_command_allowed(command_type: str, *, policy: str) -> bool:
     pol = (policy or DEFAULT_REMOTE_EXECUTION_POLICY).strip().lower()
     if pol == REMOTE_EXECUTION_POLICY_FULL:
         return True
-    # status_only (default)
+    # status_only = canale sottile Control Panel ↔ Agent
     return str(command_type) in REMOTE_STATUS_ONLY_ALLOWED
 
 

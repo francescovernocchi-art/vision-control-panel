@@ -7,10 +7,13 @@ from app.remote.config import RemoteConfig
 from app.remote.models import DeviceIdentity, is_remote_command_allowed
 
 
-def test_status_only_policy_allows_only_get_status():
+def test_status_only_policy_allows_thin_channel_only():
     assert is_remote_command_allowed("GET_STATUS", policy="status_only")
+    assert is_remote_command_allowed("WAKE_SUPERVISOR", policy="status_only")
+    assert is_remote_command_allowed("DEACTIVATE_SUPERVISOR", policy="status_only")
     assert not is_remote_command_allowed("CHECK_ENISPACE_MAIL", policy="status_only")
     assert not is_remote_command_allowed("PAUSE_MODULE", policy="status_only")
+    assert not is_remote_command_allowed("RETRY_JOB", policy="status_only")
 
 
 def test_supabase_backend_requires_anon_and_token():
@@ -59,3 +62,44 @@ def test_identity_heartbeat_shape_has_platform_version():
     hb = ident.to_heartbeat()
     assert hb["platform_version"]
     assert "skills" not in hb
+
+
+def test_humanize_missing_heartbeat_rpc():
+    msg = (
+        'HTTP 404: {"code":"PGRST202","message":'
+        '"Could not find the function public.agent_heartbeat(...)"'
+    )
+    out = SupabaseRemoteBackend._humanize_error(msg)
+    assert "agent_heartbeat" in out
+    assert "migration" in out.lower()
+
+
+def test_soft_connect_accepts_missing_device_id_column():
+    msg = (
+        'HTTP 400: {"code":"42703","message":'
+        '"column devices.device_id does not exist"}'
+    )
+    assert SupabaseRemoteBackend._is_soft_connect_error(msg) is True
+
+
+def test_connect_probe_uses_select_star(monkeypatch):
+    cfg = RemoteConfig(
+        mode="supabase",
+        supabase_url="https://example.supabase.co",
+        vision_agent_token="tok",
+        supabase_anon_key="anon",
+        device_id="VIS-TARANTO-01",
+    )
+    be = SupabaseRemoteBackend(cfg)
+    calls = []
+
+    def fake_rest(method, path, *, body=None, params=None, prefer=""):
+        calls.append((method, path, params))
+        return []
+
+    monkeypatch.setattr(be, "_rest", fake_rest)
+    be.connect()
+    assert be.connected is True
+    assert calls
+    assert calls[0][1] == "/rest/v1/devices"
+    assert calls[0][2].get("select") == "*"

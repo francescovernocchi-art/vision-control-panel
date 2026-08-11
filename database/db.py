@@ -20,7 +20,12 @@ from database.models import (
     now_iso,
 )
 from utils.logger import get_logger
-from utils.paths import database_path, default_download_dir, ENISPACE_HOME_URL
+from utils.paths import (
+    database_path,
+    default_download_dir,
+    ensure_module_data_tree,
+    ENISPACE_HOME_URL,
+)
 
 # Import lazy per evitare cicli: modelli Jarvis vivono in services.jarvis.models
 # ma i metodi DB accettano/restituiscono quelli.
@@ -166,6 +171,29 @@ CREATE TABLE IF NOT EXISTS jarvis_job_events (
 CREATE INDEX IF NOT EXISTS idx_jarvis_jobs_status ON jarvis_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jarvis_jobs_created ON jarvis_jobs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_jarvis_events_job ON jarvis_job_events(job_id);
+
+-- Phase 1: ModuleSettings / ModuleState (parallel to AppSettings; non-operative)
+CREATE TABLE IF NOT EXISTS module_settings (
+    module_id TEXT PRIMARY KEY,
+    schema_version INTEGER NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    version TEXT NOT NULL,
+    capabilities TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS module_state (
+    module_id TEXT PRIMARY KEY,
+    status TEXT NOT NULL DEFAULT 'OFFLINE',
+    health TEXT NOT NULL DEFAULT 'UNKNOWN',
+    last_error TEXT,
+    last_activity_at TEXT,
+    last_sync_at TEXT,
+    metrics TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL
+);
 """
 
 
@@ -193,8 +221,91 @@ class Database:
         with self.connect() as conn:
             conn.executescript(SCHEMA)
             self._migrate_contracts(conn)
+            self._migrate_module_tables(conn)
         self._ensure_default_settings()
+        self._ensure_module_settings_seed()
         logger.debug("Schema SQLite pronto: %s", self.path)
+
+    def _migrate_module_tables(self, conn: sqlite3.Connection) -> None:
+        """Idempotent Phase 1 tables (also covered by SCHEMA CREATE IF NOT EXISTS)."""
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS module_settings (
+                module_id TEXT PRIMARY KEY,
+                schema_version INTEGER NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 0,
+                version TEXT NOT NULL,
+                capabilities TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS module_state (
+                module_id TEXT PRIMARY KEY,
+                status TEXT NOT NULL DEFAULT 'OFFLINE',
+                health TEXT NOT NULL DEFAULT 'UNKNOWN',
+                last_error TEXT,
+                last_activity_at TEXT,
+                last_sync_at TEXT,
+                metrics TEXT NOT NULL DEFAULT '{}',
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+
+    def _ensure_module_settings_seed(self) -> None:
+        """
+        Insert safe non-operative ModuleSettings / ModuleState defaults.
+
+        Does NOT overwrite existing rows and does NOT touch AppSettings.
+        ModuleSettings remains parallel infrastructure (not operative SoT).
+        """
+        from app.modules.config.defaults import build_seed_envelope, seed_module_ids
+        from app.modules.config.validate import validate_module_settings
+
+        for module_id in seed_module_ids():
+            existing = self.get_module_settings(module_id)
+            if existing is not None:
+                # Phase 3A: ensure explicit_fields present (empty ⇒ no legacy override)
+                if "explicit_fields" not in existing:
+                    patched = dict(existing)
+                    patched["explicit_fields"] = []
+                    try:
+                        validated = validate_module_settings(
+                            patched, expected_module_id=module_id
+                        )
+                        self.upsert_module_settings(validated, validate=False)
+                    except Exception as exc:
+                        logger.warning(
+                            "normalize explicit_fields %s failed: %s", module_id, exc
+                        )
+                continue
+            try:
+                ensure_module_data_tree(module_id)
+            except Exception as exc:
+                logger.warning("module data tree %s: %s", module_id, exc)
+            envelope = build_seed_envelope(module_id)
+            validated = validate_module_settings(
+                envelope, expected_module_id=module_id
+            )
+            self.upsert_module_settings(validated, validate=False)
+            if self.get_module_state(module_id) is None:
+                self.upsert_module_state(
+                    {
+                        "module_id": module_id,
+                        "status": "DISABLED" if not validated.get("enabled") else "OFFLINE",
+                        "health": "UNKNOWN",
+                        "last_error": None,
+                        "last_activity_at": None,
+                        "last_sync_at": None,
+                        "metrics": {},
+                    }
+                )
+            logger.info("Seed ModuleSettings creato per %s (non-operative)", module_id)
 
     def _migrate_contracts(self, conn: sqlite3.Connection) -> None:
         cols = {
@@ -297,6 +408,10 @@ class Database:
             self.set_setting("jarvis_simulation", False)
         if self.get_setting("jarvis_avatar_level") is None:
             self.set_setting("jarvis_avatar_level", "full")
+        if self.get_setting("jarvis_avatar_model") is None:
+            self.set_setting("jarvis_avatar_model", "vision_avatar_v1")
+        if self.get_setting("jarvis_avatar_mode") is None:
+            self.set_setting("jarvis_avatar_mode", "3d")
         # Upgrade host legacy Register.it → SecureMail (una sola volta se ancora default vecchio)
         old_imap = (self.get_setting("imap_host") or "").strip().lower()
         if old_imap in ("", "imap.register.it"):
@@ -363,6 +478,11 @@ class Database:
                 if "browser_hidden" in raw
                 else (not _bool("browser_visible", True))
             ),
+            chrome_use_system_profile=_bool("chrome_use_system_profile", True),
+            chrome_profile_directory=(
+                raw.get("chrome_profile_directory") or "Default"
+            ).strip()
+            or "Default",
             debug_mode=_bool("debug_mode", False),
             browser_timeout_ms=_int("browser_timeout_ms", 60000),
             open_folder_after_download=_bool("open_folder_after_download", False),
@@ -397,6 +517,14 @@ class Database:
                 raw.get("jarvis_avatar_level") or "full"
             ).strip().lower()
             or "full",
+            jarvis_avatar_model=(
+                raw.get("jarvis_avatar_model") or "vision_avatar_v1"
+            ).strip()
+            or "vision_avatar_v1",
+            jarvis_avatar_mode=(
+                raw.get("jarvis_avatar_mode") or "3d"
+            ).strip().lower()
+            or "3d",
             extra=extra,
         )
 
@@ -406,6 +534,10 @@ class Database:
             "download_folder": settings.download_folder,
             "browser_hidden": settings.browser_hidden,
             "browser_visible": not settings.browser_hidden,
+            "chrome_use_system_profile": bool(settings.chrome_use_system_profile),
+            "chrome_profile_directory": (
+                (settings.chrome_profile_directory or "Default").strip() or "Default"
+            ),
             "debug_mode": settings.debug_mode,
             "browser_timeout_ms": settings.browser_timeout_ms,
             "open_folder_after_download": settings.open_folder_after_download,
@@ -442,11 +574,216 @@ class Database:
                 (settings.jarvis_avatar_level or "full").strip().lower()
                 or "full"
             ),
+            "jarvis_avatar_model": (
+                (settings.jarvis_avatar_model or "vision_avatar_v1").strip()
+                or "vision_avatar_v1"
+            ),
+            "jarvis_avatar_mode": (
+                (settings.jarvis_avatar_mode or "3d").strip().lower()
+                or "3d"
+            ),
             "extra": settings.extra,
         }
         for key, value in mapping.items():
             self.set_setting(key, value)
         logger.info("Impostazioni salvate.")
+
+    # ------------------------------------------------------------------ module settings / state (Phase 1)
+    def get_module_settings(self, module_id: str) -> Optional[dict]:
+        """Return full ModuleSettings envelope or None. Not used by legacy operations."""
+        mid = (module_id or "").strip().lower()
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT payload FROM module_settings WHERE module_id = ?",
+                (mid,),
+            ).fetchone()
+        if not row:
+            return None
+        try:
+            data = json.loads(row["payload"])
+        except json.JSONDecodeError:
+            logger.error("module_settings payload corrupt for %s", mid)
+            return None
+        return data if isinstance(data, dict) else None
+
+    def list_module_settings(self) -> list[dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT module_id, payload FROM module_settings ORDER BY module_id"
+            ).fetchall()
+        out: list[dict] = []
+        for row in rows:
+            try:
+                data = json.loads(row["payload"])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(data, dict):
+                out.append(data)
+        return out
+
+    def upsert_module_settings(
+        self,
+        payload: dict,
+        *,
+        validate: bool = True,
+        expected_module_id: Optional[str] = None,
+    ) -> dict:
+        """
+        Persist a ModuleSettings envelope.
+
+        ``payload`` is the authoritative full envelope JSON. Columns
+        schema_version/enabled/version/capabilities are denormalized projections.
+        """
+        from app.modules.config.models import ModuleSettingsRecord
+        from app.modules.config.validate import validate_module_settings
+
+        if validate:
+            envelope = validate_module_settings(
+                payload, expected_module_id=expected_module_id
+            )
+        else:
+            envelope = payload
+            if expected_module_id:
+                mid = str(envelope.get("module_id", "")).strip().lower()
+                if mid != expected_module_id.strip().lower():
+                    raise ValueError("module_id mismatch on upsert")
+
+        mid = str(envelope["module_id"]).strip().lower()
+        caps = list(envelope.get("capabilities") or [])
+        record = ModuleSettingsRecord(
+            module_id=mid,
+            schema_version=int(envelope["schema_version"]),
+            enabled=bool(envelope["enabled"]),
+            version=str(envelope["version"]),
+            capabilities=caps,
+            payload=envelope,
+        )
+        ts = now_iso()
+        with self.connect() as conn:
+            existing = conn.execute(
+                "SELECT created_at FROM module_settings WHERE module_id = ?",
+                (mid,),
+            ).fetchone()
+            created = existing["created_at"] if existing else ts
+            conn.execute(
+                """
+                INSERT INTO module_settings(
+                    module_id, schema_version, enabled, version,
+                    capabilities, payload, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(module_id) DO UPDATE SET
+                    schema_version = excluded.schema_version,
+                    enabled = excluded.enabled,
+                    version = excluded.version,
+                    capabilities = excluded.capabilities,
+                    payload = excluded.payload,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    record.module_id,
+                    record.schema_version,
+                    1 if record.enabled else 0,
+                    record.version,
+                    record.capabilities_json(),
+                    record.payload_json(),
+                    created,
+                    ts,
+                ),
+            )
+        return envelope
+
+    def get_module_state(self, module_id: str) -> Optional[dict]:
+        mid = (module_id or "").strip().lower()
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM module_state WHERE module_id = ?",
+                (mid,),
+            ).fetchone()
+        if not row:
+            return None
+        try:
+            metrics = json.loads(row["metrics"] or "{}")
+        except json.JSONDecodeError:
+            metrics = {}
+        if not isinstance(metrics, dict):
+            metrics = {}
+        return {
+            "module_id": row["module_id"],
+            "status": row["status"],
+            "health": row["health"],
+            "last_error": row["last_error"],
+            "last_activity_at": row["last_activity_at"],
+            "last_sync_at": row["last_sync_at"],
+            "metrics": metrics,
+            "updated_at": row["updated_at"],
+        }
+
+    def list_module_state(self) -> list[dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT module_id FROM module_state ORDER BY module_id"
+            ).fetchall()
+        out: list[dict] = []
+        for row in rows:
+            st = self.get_module_state(row["module_id"])
+            if st:
+                out.append(st)
+        return out
+
+    def upsert_module_state(self, state: dict) -> dict:
+        """Persist runtime ModuleState only (no settings fields)."""
+        from app.modules.config.capabilities import (
+            MODULE_STATE_HEALTH,
+            MODULE_STATE_STATUS,
+        )
+
+        mid = str(state.get("module_id") or "").strip().lower()
+        if not mid:
+            raise ValueError("module_state.module_id required")
+        status = str(state.get("status") or "OFFLINE").strip().upper()
+        health = str(state.get("health") or "UNKNOWN").strip().upper()
+        if status not in MODULE_STATE_STATUS:
+            raise ValueError(f"invalid module_state.status: {status}")
+        if health not in MODULE_STATE_HEALTH:
+            raise ValueError(f"invalid module_state.health: {health}")
+        metrics = state.get("metrics") or {}
+        if not isinstance(metrics, dict):
+            raise ValueError("module_state.metrics must be an object")
+        # Reject accidental settings keys
+        forbidden = {"capabilities", "common", "module_specific", "payload", "password"}
+        if forbidden.intersection(state.keys()):
+            raise ValueError("module_state must not contain settings fields")
+        ts = now_iso()
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO module_state(
+                    module_id, status, health, last_error,
+                    last_activity_at, last_sync_at, metrics, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(module_id) DO UPDATE SET
+                    status = excluded.status,
+                    health = excluded.health,
+                    last_error = excluded.last_error,
+                    last_activity_at = excluded.last_activity_at,
+                    last_sync_at = excluded.last_sync_at,
+                    metrics = excluded.metrics,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    mid,
+                    status,
+                    health,
+                    state.get("last_error"),
+                    state.get("last_activity_at"),
+                    state.get("last_sync_at"),
+                    json.dumps(metrics, ensure_ascii=False),
+                    ts,
+                ),
+            )
+        out = self.get_module_state(mid)
+        assert out is not None
+        return out
 
     # ------------------------------------------------------------------ contracts
     @staticmethod

@@ -111,16 +111,66 @@ PWA Realtime/poll
 
 ## 8. Shape `commands.result` (v1)
 
-Campi attesi (compatibili RemoteStatusResponse Agent):
+Campi attesi (compatibili RemoteStatusResponse Agent) — **preservati**:
 
 ```text
-api_version, contract_version,
+ok, api_version, contract_version,
 device_id, device_name, agent_version, vision_version, platform_version, timestamp,
 core_status, supervisor_status, overall_health,
 current_job, queue_size,
 modules[], skills[], services[], warnings[],
 remote_control_enabled, agent{},
-partial, missing_sections[]
+partial, missing_sections[],
+vision_core
+```
+
+### 8.1 Phase 3D — sezione additiva `enispace_runtime` (opzionale)
+
+Backward-compatible: i consumer che ignorano chiavi sconosciute restano validi.
+Se il campo è assente → legacy consumer OK. Se presente ma `available=false` → PWA mostra stato parziale.
+
+```json
+{
+  "enispace_runtime": {
+    "status": "IDLE|PROCESSING|DEGRADED|OFFLINE|UNKNOWN",
+    "available": true,
+    "active": true,
+    "pending_jobs": 0,
+    "current_job": null,
+    "last_job": null,
+    "last_mail_check": null,
+    "last_error": null,
+    "detail_state": "IN ATTESA"
+  }
+}
+```
+
+| Campo | Fonte | Note |
+|-------|-------|------|
+| `status` | legacy supervisor state machine (mapped) | Enum remoto; **non** fondere con `core_status` |
+| `active` | supervisor `is_active` | null se worker unbound |
+| `pending_jobs` | supervisor pending queue count | **non** è `queue_size` Vision Core |
+| `current_job` | EniSpace/legacy job DTO sanitizzato | Separato da top-level `current_job` |
+| `last_job` | summary string → `{summary}` oppure null | Nessun inventato |
+| `last_mail_check` | `last_check` ISO oppure null | Read-only |
+| `last_error` | job.error_message truncato oppure null | No stacktrace |
+| `detail_state` | stato UI legacy (IT) | Osservabilità; non branding |
+| `available` | false se worker non bound / errore | Con `partial` + `missing_sections` |
+
+**Dual job model (obbligatorio):**
+
+- Top-level `current_job` / `queue_size` = **Vision Core** jobs
+- `enispace_runtime.current_job` / `pending_jobs` = **EniSpace** legacy supervisor jobs
+- NON fonderli artificialmente
+
+**Nullable:** campi non osservabili → `null` (non demo).
+
+**Nessuna stringa nuova `"JARVIS"`** in `enispace_runtime`.
+
+`vision_core.assistant` può ancora contenere residuo legacy `"JARVIS"` (compat). Campo additivo:
+
+```text
+vision_core.product_name = "VISION"
 ```
 
 `overall_health=DEGRADED` **non** è errore generale (es. coin_transport IN_DEVELOPMENT, notification stub).
@@ -130,10 +180,12 @@ partial, missing_sections[]
 - Badge **REMOTE CONTROL / READ ONLY** (cyan/blu)
 - Pulsante unico operativo remoto: **Aggiorna stato** (= GET_STATUS)
 - Altri comandi: nascosti o badge “Non ancora abilitato”
-- Mostrare: Core, Supervisor, Agent, eniSpace, Trasporto Monete, Platform Health, Servizi, Warning, ultimo aggiornamento
+- Mostrare: Core, Supervisor, Agent, eniSpace (`enispace_runtime`), Trasporto Monete, Platform Health, Servizi, Warning, ultimo aggiornamento
 - Se `partial=true` → “Stato parziale” + `missing_sections`
-- Offline device: `derived_status` / soglia last_seen (configurabile)
+- Offline device: `derived_status` / soglia last_seen (configurabile) — **NON** usare dati demo come fallback
+- Durante GET_STATUS: loading state; timeout → errore reale (nessun fallback demo)
 - Nessun secret eniSpace/PEC/cookie in DB
+- **Nessun HTTP locale** verso il desktop; **nessun WebSocket locale**
 
 ## 10. Ruoli
 
@@ -179,5 +231,19 @@ Poi INSERT hash in `agent_api_tokens` per `VIS-TARANTO-01`.
 
 - `docs/VISION_REMOTE_CLOUD_SETUP.md` — setup operativo Agent
 - `app/remote/backends/supabase.py` — client RPC
-- `app/remote/status_service.py` — payload GET_STATUS
+- `app/remote/status_service.py` — payload GET_STATUS (+ `enispace_runtime`)
+- `app/remote/status_models.py` — `RemoteEniSpaceRuntimeStatus`
 - Policy Python: `app/remote/models.py` `is_remote_command_allowed`
+
+## 15. Heartbeat vs GET_STATUS (Phase 3D)
+
+| Canale | Uso PWA | Payload |
+|--------|---------|---------|
+| **Heartbeat** (`devices.last_seen_at`) | ONLINE/OFFLINE, versions summary | Leggero: device_id, status, versions, current_job_id, modules summary, timestamp — **senza** skills/services/warnings/`enispace_runtime` |
+| **GET_STATUS** (`commands.result`) | Dettaglio operativo | Full v1 + `enispace_runtime` |
+
+- L’Agent **non** scrive `OFFLINE` sul device: la PWA deriva OFFLINE da `last_seen_at` vs soglia.
+- Refresh: RPC `create_get_status_command` + realtime/poll 3–5s; timeout UI ~30s.
+- Event sync (`publish_event` / `sync_job` / `create_notification`) resta NO-OP — non richiesto se GET_STATUS+heartbeat bastano.
+- Architettura: **Supabase cloud-only**, Agent **outbound HTTPS only**, **nessuna porta inbound** sul desktop.
+- Execution policy default: `status_only` — solo GET_STATUS remoto.

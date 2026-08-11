@@ -14,6 +14,7 @@ from services.imap_mail_service import ImapConfig, ImapMailService
 from services.jarvis.logger import JarvisLogger
 from services.jarvis.mail_watcher import MailWatcher
 from services.jarvis.models import JarvisJob, JarvisSettings
+from services.jarvis.module_guard import ModuleOnlineGuard, ModuleStatus
 from services.jarvis.notifications import NotificationService
 from services.jarvis.processor import JobProcessor
 from services.jarvis.queue import JobQueue
@@ -31,6 +32,7 @@ BusyCheck = Callable[[], bool]
 class JarvisSupervisor:
     """
     Supervisore background:
+    - verifica moduli online e attiva i login se necessari
     - poll IMAP a intervallo configurabile
     - accoda job PENDING
     - processa un job alla volta
@@ -47,6 +49,7 @@ class JarvisSupervisor:
         settings_factory: Callable[[], JarvisSettings],
         is_app_busy: Optional[BusyCheck] = None,
         on_ui_refresh: Optional[UiCallback] = None,
+        module_guard: Optional[ModuleOnlineGuard] = None,
     ) -> None:
         self.db = db
         self.batch = batch
@@ -55,6 +58,7 @@ class JarvisSupervisor:
         self.settings_factory = settings_factory
         self.is_app_busy = is_app_busy or (lambda: False)
         self.on_ui_refresh = on_ui_refresh
+        self.module_guard = module_guard
 
         self.logger = JarvisLogger()
         self.notifications = NotificationService()
@@ -82,6 +86,7 @@ class JarvisSupervisor:
         self.last_job_summary: str = "—"
         self.current_job: Optional[JarvisJob] = None
         self._imap_cfg_cache: Optional[ImapConfig] = None
+        self._module_statuses: list[ModuleStatus] = []
 
     # ------------------------------------------------------------------ properties
     @property
@@ -179,6 +184,68 @@ class JarvisSupervisor:
         self.current_job = None
         self._notify_ui()
 
+    def _ensure_modules_online(self) -> bool:
+        """
+        Verifica che i moduli richiesti siano online; se no, attiva i login.
+        Ritorna True solo se tutti i moduli required sono online.
+        """
+        if self.module_guard is None:
+            return True
+
+        self.state = JarvisState.VERIFICA_MODULI
+        self._notify_ui()
+        self.logger.log(
+            "Verifica moduli online…",
+            level=LogLevel.INFO,
+            state=JarvisState.VERIFICA_MODULI,
+        )
+
+        try:
+            statuses = self.module_guard.check_and_ensure(ensure=True)
+        except Exception as exc:
+            logger.exception("Verifica moduli fallita: %s", exc)
+            self.logger.log(
+                f"Verifica moduli fallita: {exc}",
+                level=LogLevel.ERROR,
+                state=JarvisState.ERRORE,
+            )
+            self._module_statuses = []
+            self._notify_ui()
+            return False
+
+        self._module_statuses = list(statuses)
+        offline_required = [s for s in statuses if s.required and not s.online]
+        for status in statuses:
+            level = LogLevel.SUCCESS if status.online else (
+                LogLevel.WARNING if status.required else LogLevel.INFO
+            )
+            self.logger.log(
+                f"Modulo {status.label}: "
+                f"{'ONLINE' if status.online else 'OFFLINE'} — {status.message}",
+                level=level,
+                state=JarvisState.VERIFICA_MODULI,
+            )
+
+        if offline_required:
+            names = ", ".join(s.label for s in offline_required)
+            self.logger.log(
+                f"Moduli non online: {names}. "
+                "Completare login/MFA in Chrome se richiesto.",
+                level=LogLevel.WARNING,
+                state=JarvisState.INTERVENTO_RICHIESTO,
+            )
+            self.state = JarvisState.INTERVENTO_RICHIESTO
+            self._notify_ui()
+            return False
+
+        self.logger.log(
+            "Tutti i moduli richiesti sono online.",
+            level=LogLevel.SUCCESS,
+            state=JarvisState.IN_ATTESA,
+        )
+        self._notify_ui()
+        return True
+
     def _cycle(self, settings: JarvisSettings) -> None:
         if not self._active:
             return
@@ -189,6 +256,11 @@ class JarvisSupervisor:
                 level=LogLevel.INFO,
                 state=self.state,
             )
+            return
+
+        # 1) Moduli online (login automatico se necessario)
+        modules_ok = self._ensure_modules_online()
+        if not self._active or self._stop.is_set():
             return
 
         self.state = JarvisState.CONTROLLO_MAIL
@@ -227,6 +299,17 @@ class JarvisSupervisor:
             )
 
         self._notify_ui()
+
+        # 2) Lavorazioni solo se i moduli richiesti sono online
+        if not modules_ok:
+            self.logger.log(
+                "Lavorazioni in pausa: attendere moduli online / login.",
+                level=LogLevel.WARNING,
+                state=JarvisState.INTERVENTO_RICHIESTO,
+            )
+            self._notify_ui()
+            return
+
         self._process_next(settings)
 
         if self._active and not self._processing:
@@ -239,6 +322,9 @@ class JarvisSupervisor:
                 break
             job = self.queue.next_pending()
             if job is None:
+                break
+            # Riverifica moduli prima del job (sessione può scadere)
+            if self.module_guard is not None and not self._ensure_modules_online():
                 break
             self._processing = True
             self.current_job = job
@@ -314,6 +400,16 @@ class JarvisSupervisor:
     # ------------------------------------------------------------------ snapshot UI
     def snapshot(self) -> dict:
         cur = self.current_job
+        modules = [
+            {
+                "id": s.module_id,
+                "label": s.label,
+                "online": s.online,
+                "message": s.message,
+                "required": s.required,
+            }
+            for s in (self._module_statuses or [])
+        ]
         return {
             "active": self._active,
             "state": self.state,
@@ -327,4 +423,10 @@ class JarvisSupervisor:
             ),
             "simulation": bool(self.get_settings().simulation),
             "processing": self._processing,
+            "modules": modules,
+            "modules_all_online": all(
+                m["online"] for m in modules if m.get("required", True)
+            )
+            if modules
+            else False,
         }

@@ -3,7 +3,7 @@ VIS•ION — VIS Intelligent Operations Network
 Entry point principale.
 
 Avvio:
-    python main.py
+    python run_vision.py
     python app.py
 """
 

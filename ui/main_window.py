@@ -27,25 +27,57 @@ from services.worker import BackgroundWorker
 from services.jarvis import JarvisSupervisor
 from services.jarvis.models import JarvisSettings
 from services.jarvis.states import LogLevel
+from ui.shell import (
+    VisionAssistantRail as AssistantRail,
+    VisionSidebar as Sidebar,
+    VisionStatusFooter as StatusFooter,
+    VisionTopHeader as AppHeader,
+    WorkspacePageTitle,
+)
 from ui.components import (
-    AppHeader,
     Card,
     JarvisSupervisorCard,
     MetricCard,
     PageNavigator,
-    Sidebar,
     WorkflowStrip,
     styled_textbox,
 )
-from ui.settings_window import SettingsWindow, SetupWizard
+from ui.settings_window import SettingsPage, SettingsWindow, SetupWizard
 from ui.icons import apply_app_icon
-from ui.jarvis_avatar import JarvisAvatarPanel
-from ui.theme import APP_VERSION, COLORS, SUCCESS, apply_treeview_style, font_family
+from ui.vision_avatar import VisionAvatar, VisionAvatarPanel
+from ui.supervisor_chat import StatusChip, SupervisorChatTranscript, SupervisorComposer
+from ui.glass import schedule_window_glass
+from ui.theme import (
+    APP_VERSION,
+    ASSISTANT_RAIL_WIDTH,
+    AVATAR_DISPLAY_SIZE,
+    BORDER_FROST,
+    CARD,
+    CARD_ALT,
+    COLORS,
+    GLOW,
+    GLASS_ACRYLIC_ALPHA,
+    GLASS_TINT,
+    GLASS_WINDOW_ALPHA,
+    MUTED,
+    PRIMARY,
+    RADIUS_LG,
+    SIDEBAR_WIDTH,
+    SUCCESS,
+    TEXT,
+    apply_treeview_style,
+    font_family,
+)
 from ui.toast import ToastManager
 from utils.logger import drain_gui_log_queue, get_logger, set_debug_mode
-from utils.paths import APP_NAME, ASSISTANT_NAME, PRODUCT_FULL_NAME, default_download_dir
+from utils.paths import APP_NAME, PRODUCT_FULL_NAME, default_download_dir
 from utils.pdf_preview import render_pdf_thumbnail
 from app.bootstrap import bind_jarvis, create_vision_core
+from app.modules.config.enispace_runtime import (
+    load_mailbox_runtime,
+    load_paths_runtime,
+    load_portal_browser_runtime,
+)
 from app.remote import VisionRemoteAgent
 from app.remote.config import RemoteConfig
 from app.remote.models import DeviceStatus
@@ -62,19 +94,20 @@ STATUS_ICON = {
 }
 
 _PAGE_META = {
-    "dashboard": ("Dashboard", "VIS•ION Core — panoramica operativa"),
-    "assistente": ("Assistente", "Stato avatar globale VIS•ION"),
+    "dashboard": ("Chat Supervisor", "Messaggi e comandi Sveglia / Disattiva"),
+    "assistente": ("Assistente", "Stato avatar globale VISION"),
     "moduli": ("Moduli", "Stato moduli registrati"),
     "enispace": ("eniSpace", "Automazione ENI / MdA"),
-    "coin_transport": ("Trasporto Monete", "Workflow Sala Conta (in sviluppo)"),
+    "coin_transport": ("Trasporto Monete", "Workflow Sala Conta"),
     "lavorazioni": ("Lavorazioni", "VisionJob globali"),
-    "attivita": ("Attività", "Eventi recenti VIS•ION"),
+    "attivita": ("Attività", "Eventi recenti VISION"),
     "notifiche": ("Notifiche", "NotificationService centrale"),
     "ricerca": ("Ricerca", "Cerca ordini e scarica allegati"),
     "mail": ("Mail", "Registro mail gestite"),
+    "impostazioni": ("Impostazioni", "Configura i moduli e le preferenze di VISION"),
     "documenti": ("Documenti", "Allegati e download"),
     "coda": ("Coda stampa", "PDF in attesa di stampa"),
-    "jarvis": ("JARVIS", "Supervisore automatico eniSpace"),
+    "jarvis": ("VISION Supervisor", "Supervisore automatico eniSpace"),
     "storico": ("Storico", "Contratti ricercati"),
 }
 
@@ -86,11 +119,19 @@ class MainWindow(ctk.CTk):
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("dark-blue")
 
-        self.title(f"{APP_NAME} — {PRODUCT_FULL_NAME}")
-        self.geometry("1280x820")
-        self.minsize(1024, 700)
+        self.title(f"VISION — {PRODUCT_FULL_NAME}")
+        self.geometry("1920x1080")
+        self.minsize(1366, 768)
         self.configure(fg_color=COLORS["bg"])
         apply_app_icon(self)
+        # Vetro semitrasparente (acrylic/mica + alpha) — solo grafica
+        schedule_window_glass(
+            self,
+            delay_ms=100,
+            alpha=GLASS_WINDOW_ALPHA,
+            tint=GLASS_TINT,
+            acrylic_alpha=GLASS_ACRYLIC_ALPHA,
+        )
         self._current_page = "dashboard"
         self._pages: dict[str, ctk.CTkFrame] = {}
         self._toasts = ToastManager(self)
@@ -99,25 +140,43 @@ class MainWindow(ctk.CTk):
         self.db = Database()
         settings = self.db.get_settings()
         set_debug_mode(settings.debug_mode)
+        portal_browser = load_portal_browser_runtime(self.db, app_settings=settings)
+        paths_rt = load_paths_runtime(self.db, app_settings=settings)
 
         self.credentials = CredentialService()
+        from utils.paths import (
+            ENISPACE_STARTUP_URL,
+            chrome_executable_path,
+            resolve_browser_user_data_dir,
+        )
+
+        use_system = False  # come Utility: profilo isolato data/browser-profile
+        profile_name = (
+            getattr(settings, "chrome_profile_directory", None) or "Default"
+        ).strip() or "Default"
+        exe = chrome_executable_path()
         self.browser = BrowserService(
             BrowserConfig(
                 headless=False,
-                hidden=bool(settings.browser_hidden),
-                timeout_ms=settings.browser_timeout_ms,
-                debug=settings.debug_mode,
+                hidden=bool(portal_browser.hidden),
+                timeout_ms=portal_browser.timeout_ms,
+                debug=portal_browser.debug,
+                use_system_chrome_profile=use_system,
+                chrome_profile_directory=profile_name,
+                user_data_dir=resolve_browser_user_data_dir(
+                    use_system_profile=False
+                ),
+                executable_path=str(exe) if exe else None,
+                startup_url=ENISPACE_STARTUP_URL,
             )
         )
-        self.download_service = DownloadService(
-            settings.download_folder or str(default_download_dir())
-        )
+        self.download_service = DownloadService(paths_rt.download_dir)
         self.enispace = EniSpaceService(
             self.browser,
             self.credentials,
-            base_url=settings.enispace_base_url,
-            timeout_ms=settings.browser_timeout_ms,
-            debug=settings.debug_mode,
+            base_url=portal_browser.base_url,
+            timeout_ms=portal_browser.timeout_ms,
+            debug=portal_browser.debug,
             db=self.db,
         )
         self.print_queue = PrintQueueService(self.db)
@@ -128,6 +187,32 @@ class MainWindow(ctk.CTk):
             print_queue=self.print_queue,
         )
         self.worker = BackgroundWorker()
+
+        def _mail_test(cfg):
+            from services.imap_mail_service import ImapMailService
+
+            ok, msg, _folders = ImapMailService(cfg).test_connection()
+            return ok, msg
+
+        from services.jarvis.module_guard import (
+            EniSpaceModuleProvider,
+            MailModuleProvider,
+            ModuleOnlineGuard,
+            PrintModuleProvider,
+        )
+
+        module_guard = ModuleOnlineGuard(
+            [
+                EniSpaceModuleProvider(self.enispace),
+                MailModuleProvider(
+                    self._jarvis_imap_config,
+                    test_connection=_mail_test,
+                ),
+                PrintModuleProvider(
+                    lambda: (self._jarvis_settings().printer or "").strip()
+                ),
+            ]
+        )
         self.jarvis = JarvisSupervisor(
             db=self.db,
             batch=self.batch_service,
@@ -136,6 +221,7 @@ class MainWindow(ctk.CTk):
             settings_factory=self._jarvis_settings,
             is_app_busy=self._jarvis_app_busy,
             on_ui_refresh=self._jarvis_ui_refresh,
+            module_guard=module_guard,
         )
         self.jarvis.logger.add_listener(self._on_jarvis_log_entry)
         try:
@@ -192,31 +278,75 @@ class MainWindow(ctk.CTk):
     def _build_ui(self) -> None:
         shell = ctk.CTkFrame(self, fg_color=COLORS["bg"], corner_radius=0)
         shell.pack(fill="both", expand=True)
+        shell.grid_rowconfigure(0, weight=1)
+        shell.grid_rowconfigure(1, weight=0)
+        shell.grid_columnconfigure(0, weight=1)
+
+        body = ctk.CTkFrame(shell, fg_color=COLORS["bg"], corner_radius=0)
+        body.grid(row=0, column=0, sticky="nsew")
+        # Structural: sidebar | (header+workspace+rail stacked)
+        body.grid_columnconfigure(0, weight=0, minsize=SIDEBAR_WIDTH)
+        body.grid_columnconfigure(1, weight=1)
+        body.grid_rowconfigure(0, weight=1)
 
         self.sidebar = Sidebar(
-            shell,
+            body,
             on_navigate=self._navigate,
             version=APP_VERSION,
         )
-        self.sidebar.pack(side="left", fill="y")
+        self.sidebar.grid(row=0, column=0, sticky="nsw")
 
-        right = ctk.CTkFrame(shell, fg_color=COLORS["bg"], corner_radius=0)
-        right.pack(side="left", fill="both", expand=True)
+        main_stack = ctk.CTkFrame(body, fg_color=COLORS["bg"], corner_radius=0)
+        main_stack.grid(row=0, column=1, sticky="nsew")
+        main_stack.grid_rowconfigure(1, weight=1)
+        main_stack.grid_columnconfigure(0, weight=1)
 
         self.app_header = AppHeader(
-            right,
+            main_stack,
             on_settings=self.open_settings,
-            on_record=self._start_recording,
-            on_help=self.show_recording_help,
+            on_minimize=self.iconify,
+            on_close=self._on_close,
         )
-        self.app_header.pack(fill="x")
-        # Legacy alias used by set_session_ui
+        self.app_header.grid(row=0, column=0, sticky="ew")
         self.session_label = self.app_header.session_label
 
-        self.content = ctk.CTkFrame(right, fg_color=COLORS["bg"], corner_radius=0)
-        self.content.pack(fill="both", expand=True, padx=16, pady=12)
+        work = ctk.CTkFrame(main_stack, fg_color=COLORS["bg"], corner_radius=0)
+        work.grid(row=1, column=0, sticky="nsew")
+        work.grid_columnconfigure(0, weight=1)
+        work.grid_columnconfigure(1, weight=0, minsize=ASSISTANT_RAIL_WIDTH)
+        work.grid_rowconfigure(0, weight=1)
 
-        # Pages (replace CTkTabview — same widget trees, new chrome)
+        self.content = ctk.CTkFrame(work, fg_color=COLORS["bg"], corner_radius=0)
+        self.content.grid(row=0, column=0, sticky="nsew", padx=(22, 12), pady=(12, 12))
+
+        def _avatar_factory(host):
+            try:
+                s = self.db.get_settings()
+                mid = (s.jarvis_avatar_model or "vision_avatar_v1").strip()
+                mode = (getattr(s, "jarvis_avatar_mode", None) or "3d").strip()
+            except Exception:
+                mid = "vision_avatar_v1"
+                mode = "3d"
+            return VisionAvatar(
+                host,
+                size=AVATAR_DISPLAY_SIZE,
+                level_provider=self._jarvis_avatar_level,
+                model_id=mid,
+                mode=mode,
+            )
+
+        self.assistant_rail = AssistantRail(
+            work,
+            avatar_factory=_avatar_factory,
+            on_console=lambda: self._navigate("assistente"),
+        )
+        self.assistant_rail.grid(row=0, column=1, sticky="nse")
+        self.rail_avatar = self.assistant_rail.avatar
+
+        self.status_footer = StatusFooter(shell, version=APP_VERSION)
+        self.status_footer.grid(row=1, column=0, sticky="ew")
+
+        # Pages
         self.tab_dashboard = ctk.CTkFrame(self.content, fg_color="transparent")
         self.tab_search = ctk.CTkFrame(self.content, fg_color="transparent")
         self.tab_queue = ctk.CTkFrame(self.content, fg_color="transparent")
@@ -228,6 +358,8 @@ class MainWindow(ctk.CTk):
         self.tab_jobs = ctk.CTkFrame(self.content, fg_color="transparent")
         self.tab_activity = ctk.CTkFrame(self.content, fg_color="transparent")
         self.tab_notifications = ctk.CTkFrame(self.content, fg_color="transparent")
+        self.tab_settings = ctk.CTkFrame(self.content, fg_color="transparent")
+        self.tab_placeholder = ctk.CTkFrame(self.content, fg_color="transparent")
 
         self._pages = {
             "dashboard": self.tab_dashboard,
@@ -244,6 +376,11 @@ class MainWindow(ctk.CTk):
             "coda": self.tab_queue,
             "jarvis": self.tab_jarvis,
             "storico": self.tab_history,
+            "impostazioni": self.tab_settings,
+            "dispositivi": self.tab_placeholder,
+            "approvazioni": self.tab_notifications,
+            "diagnostica_nav": self.tab_placeholder,
+            "supporto": self.tab_placeholder,
         }
 
         self.tabs = PageNavigator(self._navigate, lambda: self._current_page)
@@ -259,12 +396,49 @@ class MainWindow(ctk.CTk):
         self._build_vision_jobs_tab()
         self._build_vision_activity_tab()
         self._build_vision_notifications_tab()
+        self._build_settings_page()
+        self._build_placeholder_page()
 
         self._navigate("dashboard")
 
     def _navigate(self, key: str) -> None:
-        if key == "impostazioni":
-            self.open_settings()
+        if key == "diagnostica_nav":
+            key = "impostazioni"
+            page = self._pages.get(key)
+            if page is None:
+                return
+            self._current_page = key
+            seen: set[int] = set()
+            for frame in self._pages.values():
+                fid = id(frame)
+                if fid in seen:
+                    continue
+                seen.add(fid)
+                if frame is page:
+                    continue
+                try:
+                    frame.pack_forget()
+                except Exception:
+                    pass
+            page.pack(fill="both", expand=True)
+            self.sidebar.set_active("diagnostica_nav")
+            self.app_header.set_page("Impostazioni", "Configura i moduli e le preferenze di VISION")
+            if hasattr(self, "status_footer"):
+                self.status_footer.set_module("Impostazioni")
+            try:
+                self.assistant_rail.grid(row=0, column=1, sticky="nse")
+            except Exception:
+                pass
+            try:
+                if getattr(self, "_settings_page", None) is not None:
+                    self._settings_page.reload_active()
+                    self._settings_page._select_module("diagnostica")
+            except Exception:
+                pass
+            try:
+                self._refresh_assistant_rail()
+            except Exception:
+                pass
             return
         page = self._pages.get(key)
         if page is None:
@@ -283,9 +457,33 @@ class MainWindow(ctk.CTk):
             except Exception:
                 pass
         page.pack(fill="both", expand=True)
+        # Chat Control Panel: avatar nella composizione — nascondi rail duplicato
+        try:
+            if key == "dashboard":
+                self.assistant_rail.grid_remove()
+            else:
+                self.assistant_rail.grid(row=0, column=1, sticky="nse")
+        except Exception:
+            pass
         self.sidebar.set_active(key)
-        title, subtitle = _PAGE_META.get(key, ("VIS", ""))
+        title, subtitle = _PAGE_META.get(key, ("VISION", ""))
+        if key in ("dispositivi", "supporto"):
+            title = "Dispositivi" if key == "dispositivi" else "Supporto"
+            subtitle = "Navigazione shell — contenuto collegato ai moduli esistenti"
         self.app_header.set_page(title, subtitle)
+        if hasattr(self, "status_footer"):
+            self.status_footer.set_module(title)
+        if key == "impostazioni":
+            try:
+                if getattr(self, "_settings_page", None) is not None:
+                    self._settings_page.reload_active()
+            except Exception:
+                pass
+        if key in ("jarvis", "assistente"):
+            try:
+                self._ensure_jarvis_tab_avatar()
+            except Exception:
+                pass
         if key in (
             "dashboard",
             "jarvis",
@@ -297,6 +495,7 @@ class MainWindow(ctk.CTk):
             "attivita",
             "notifiche",
             "coin_transport",
+            "approvazioni",
         ):
             try:
                 self._refresh_dashboard_metrics()
@@ -306,234 +505,221 @@ class MainWindow(ctk.CTk):
                 self._refresh_vision_views()
             except Exception:
                 pass
+        try:
+            self._refresh_assistant_rail()
+        except Exception:
+            pass
 
     def _build_dashboard(self) -> None:
+        """Control Panel = chat con VISION Supervisor (avatar + messaggi + Sveglia/Disattiva)."""
         parent = self.tab_dashboard
-        scroll = ctk.CTkScrollableFrame(parent, fg_color="transparent")
-        scroll.pack(fill="both", expand=True)
+        for child in parent.winfo_children():
+            child.destroy()
 
-        # VIS•ION Core status strip
-        vision_card = Card(
-            scroll,
-            title="VIS•ION CORE",
-            subtitle=PRODUCT_FULL_NAME,
+        parent.grid_columnconfigure(0, weight=0, minsize=320)
+        parent.grid_columnconfigure(1, weight=1)
+        parent.grid_rowconfigure(0, weight=1)
+
+        # —— Left: brand + avatar stage ——
+        stage = ctk.CTkFrame(
+            parent,
+            fg_color=CARD,
+            corner_radius=RADIUS_LG,
+            border_width=1,
+            border_color=BORDER_FROST,
+            width=320,
         )
-        vision_card.pack(fill="x", pady=(0, 10))
-        self.vision_status_label = ctk.CTkLabel(
-            vision_card.body,
-            text="CORE ONLINE · Assistente JARVIS · Moduli in caricamento…",
-            font=(font_family(), 13),
-            text_color=COLORS["text"],
-            anchor="w",
-            justify="left",
+        stage.grid(row=0, column=0, sticky="nsw", padx=(0, 14), pady=0)
+        stage.grid_propagate(False)
+        stage.pack_propagate(False)
+
+        ctk.CTkLabel(
+            stage,
+            text="VISION",
+            font=ctk.CTkFont(family=font_family(), size=22, weight="bold"),
+            text_color=TEXT,
+        ).pack(anchor="w", padx=18, pady=(18, 0))
+        ctk.CTkLabel(
+            stage,
+            text="Supervisore operativo",
+            font=ctk.CTkFont(family=font_family(), size=12, weight="bold"),
+            text_color=GLOW,
+        ).pack(anchor="w", padx=18, pady=(2, 8))
+
+        avatar_host = ctk.CTkFrame(
+            stage,
+            fg_color=CARD_ALT,
+            corner_radius=RADIUS_LG,
+            border_width=1,
+            border_color=BORDER_FROST,
         )
-        self.vision_status_label.pack(fill="x", pady=(0, 6))
-        self.vision_modules_label = ctk.CTkLabel(
-            vision_card.body,
-            text="",
-            font=(font_family(), 12),
-            text_color=COLORS["muted"],
-            anchor="w",
-            justify="left",
-        )
-        self.vision_modules_label.pack(fill="x")
-
-        remote_row = ctk.CTkFrame(vision_card.body, fg_color="transparent")
-        remote_row.pack(fill="x", pady=(8, 0))
-        self.remote_indicator = ctk.CTkLabel(
-            remote_row,
-            text="REMOTE  ○ DISABLED",
-            font=(font_family(), 12),
-            text_color=COLORS["muted"],
-            anchor="w",
-        )
-        self.remote_indicator.pack(side="left")
-        self.remote_toggle_btn = ctk.CTkButton(
-            remote_row,
-            text="REMOTE CONTROL OFF",
-            width=160,
-            height=28,
-            fg_color=COLORS["panel_alt"],
-            hover_color=COLORS["border"],
-            command=self._toggle_remote_control,
-        )
-        self.remote_toggle_btn.pack(side="right")
-        self._update_remote_indicator(DeviceStatus.DISABLED)
-
-        kpi_vision = ctk.CTkFrame(scroll, fg_color="transparent")
-        kpi_vision.pack(fill="x", pady=(0, 10))
-        for i in range(6):
-            kpi_vision.grid_columnconfigure(i, weight=1)
-        self.kpi_v_today = MetricCard(kpi_vision, "Lavorazioni oggi", "0", "VisionJob")
-        self.kpi_v_today.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
-        self.kpi_v_proc = MetricCard(kpi_vision, "In elaborazione", "0", "")
-        self.kpi_v_proc.grid(row=0, column=1, sticky="nsew", padx=3)
-        self.kpi_v_queue = MetricCard(kpi_vision, "In coda", "0", "")
-        self.kpi_v_queue.grid(row=0, column=2, sticky="nsew", padx=3)
-        self.kpi_v_done = MetricCard(kpi_vision, "Completate", "0", "")
-        self.kpi_v_done.grid(row=0, column=3, sticky="nsew", padx=3)
-        self.kpi_v_attn = MetricCard(kpi_vision, "Intervento", "0", "richiesto")
-        self.kpi_v_attn.grid(row=0, column=4, sticky="nsew", padx=3)
-        self.kpi_v_err = MetricCard(kpi_vision, "Errori", "0", "")
-        self.kpi_v_err.grid(row=0, column=5, sticky="nsew", padx=(6, 0))
-
-        kpi_row = ctk.CTkFrame(scroll, fg_color="transparent")
-        kpi_row.pack(fill="x", pady=(0, 10))
-        for i in range(4):
-            kpi_row.grid_columnconfigure(i, weight=1)
-
-        self.kpi_queue = MetricCard(kpi_row, "In coda stampa", "0", "PDF pending")
-        self.kpi_queue.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        self.kpi_jarvis = MetricCard(kpi_row, "Job JARVIS", "0", "In attesa")
-        self.kpi_jarvis.grid(row=0, column=1, sticky="nsew", padx=4)
-        self.kpi_mail = MetricCard(kpi_row, "Mail registro", "0", "Ultime voci")
-        self.kpi_mail.grid(row=0, column=2, sticky="nsew", padx=4)
-        self.kpi_session = MetricCard(kpi_row, "Sessione", "Offline", "eniSpace")
-        self.kpi_session.grid(row=0, column=3, sticky="nsew", padx=(8, 0))
-
-        mid = ctk.CTkFrame(scroll, fg_color="transparent")
-        mid.pack(fill="x", pady=(0, 10))
-        mid.grid_columnconfigure(0, weight=1)
-        mid.grid_columnconfigure(1, weight=1)
-        mid.grid_columnconfigure(2, weight=0, minsize=320)
-
-        self.dash_jarvis_card = JarvisSupervisorCard(
-            mid, on_open=lambda: self._navigate("jarvis")
-        )
-        self.dash_jarvis_card.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-
-        wf_card = Card(mid, title="Workflow", subtitle="Pipeline operativa")
-        wf_card.grid(row=0, column=1, sticky="nsew", padx=4)
-        self.dash_workflow = WorkflowStrip(wf_card.body)
-        self.dash_workflow.pack(fill="x", pady=4)
-        self.dash_workflow.set_states(["waiting"] * 6)
-
+        avatar_host.pack(fill="x", padx=14, pady=(4, 8))
+        self.dash_jarvis_avatar = None
         try:
-            self.dash_jarvis_avatar = JarvisAvatarPanel(
-                mid,
-                size=300,
+            s = self.db.get_settings()
+            mid = (s.jarvis_avatar_model or "vision_avatar_v1").strip()
+            mode = (getattr(s, "jarvis_avatar_mode", None) or "3d").strip()
+        except Exception:
+            mid = "vision_avatar_v1"
+            mode = "3d"
+        try:
+            self.dash_jarvis_avatar = VisionAvatar(
+                avatar_host,
+                size=min(AVATAR_DISPLAY_SIZE, 280),
                 level_provider=self._jarvis_avatar_level,
+                model_id=mid,
+                mode=mode,
             )
-            self.dash_jarvis_avatar.grid(
-                row=0, column=2, sticky="n", padx=(8, 0)
-            )
+            self.dash_jarvis_avatar.pack(fill="x", padx=6, pady=6)
         except Exception as exc:
-            logger.warning("Avatar dashboard non disponibile: %s", exc)
-            self.dash_jarvis_avatar = None
+            logger.warning("Avatar chat Control Panel non disponibile: %s", exc)
+            ctk.CTkLabel(
+                avatar_host,
+                text="VISION",
+                font=ctk.CTkFont(family=font_family(), size=28, weight="bold"),
+                text_color=PRIMARY,
+            ).pack(pady=48)
 
-        console_card = Card(scroll, title="ATTIVITÀ JARVIS", subtitle="ORA · TIPO · MESSAGGIO")
-        console_card.pack(fill="both", expand=True, pady=(0, 10))
-        self.activity_box = styled_textbox(console_card.body, height=160, state="disabled")
-        self.activity_box.pack(fill="both", expand=True)
+        self.chat_supervisor_detail = ctk.CTkLabel(
+            stage,
+            text="Stato: OFFLINE\nUltimo controllo: —",
+            font=ctk.CTkFont(family=font_family(), size=12),
+            text_color=MUTED,
+            justify="left",
+            anchor="w",
+        )
+        self.chat_supervisor_detail.pack(fill="x", padx=18, pady=(4, 16))
+
+        # —— Right: status chips + transcript + composer ——
+        chat_col = ctk.CTkFrame(parent, fg_color="transparent")
+        chat_col.grid(row=0, column=1, sticky="nsew")
+        chat_col.grid_rowconfigure(1, weight=1)
+        chat_col.grid_columnconfigure(0, weight=1)
+
+        header = ctk.CTkFrame(chat_col, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        ctk.CTkLabel(
+            header,
+            text="Chat con il Supervisor",
+            font=ctk.CTkFont(family=font_family(), size=20, weight="bold"),
+            text_color=TEXT,
+        ).pack(side="left")
+
+        chips = ctk.CTkFrame(header, fg_color="transparent")
+        chips.pack(side="right")
+        self.chip_agent = StatusChip(chips, "Agent")
+        self.chip_agent.pack(side="left", padx=(0, 8))
+        self.chip_supervisor = StatusChip(chips, "Supervisor")
+        self.chip_supervisor.pack(side="left")
+
+        # Compat: activity_box hidden (append_activity + legacy callers)
+        self.activity_box = styled_textbox(chat_col, height=1, state="disabled")
+        # Keep off-layout
+
+        self.supervisor_chat = SupervisorChatTranscript(chat_col)
+        self.supervisor_chat.grid(row=1, column=0, sticky="nsew", pady=(0, 8))
+
+        self.supervisor_composer = SupervisorComposer(
+            chat_col,
+            on_wake=self._jarvis_activate,
+            on_deactivate=self._jarvis_deactivate,
+            on_settings=self.open_settings,
+            on_remote_toggle=self._toggle_remote_control,
+        )
+        self.supervisor_composer.grid(row=2, column=0, sticky="ew")
+        self.remote_toggle_btn = self.supervisor_composer.btn_remote
+        self.btn_jarvis_on = self.supervisor_composer.btn_wake
+        self.btn_jarvis_off = self.supervisor_composer.btn_sleep
+
+        # Compat stubs for legacy dashboard metric refresh
+        self.remote_indicator = ctk.CTkLabel(chat_col, text="")
+        self.kpi_queue = None
+        self.kpi_jarvis = None
+        self.kpi_mail = None
+        self.kpi_session = None
+        self.dash_jarvis_card = None
+        self.dash_workflow = None
+        self.dash_jobs_tree = None
+        self.kpi_v_today = None
+        self.kpi_v_proc = None
+        self.kpi_v_queue = None
+        self.kpi_v_done = None
+        self.kpi_v_attn = None
+        self.kpi_v_err = None
+        self.vision_status_label = None
+        self.vision_modules_label = None
+        self._remote_last_notified_error = ""
+
+        self._append_chat_message(
+            "Sono VISION, il tuo supervisore operativo.\n"
+            "Qui ricevi i miei messaggi e puoi Svegliarmi o Disattivarmi.",
+            role="supervisor",
+            level="INFO",
+        )
+        self._update_remote_indicator(DeviceStatus.DISABLED)
         try:
-            tb = self.activity_box._textbox  # noqa: SLF001
-            tb.tag_configure("INFO", foreground=COLORS["text"])
-            tb.tag_configure("SUCCESS", foreground=SUCCESS)
-            tb.tag_configure("WARNING", foreground=COLORS["warning"])
-            tb.tag_configure("ERROR", foreground=COLORS["danger"])
+            self._refresh_chat_status_chips()
         except Exception:
             pass
 
-        jobs_card = Card(scroll, title="Lavorazioni recenti", subtitle="Ultimi job JARVIS")
-        jobs_card.pack(fill="both", expand=True, pady=(0, 4))
-        style_name = apply_treeview_style("DashJobs.Treeview")
-        cols = ("ora", "ordine", "esito", "durata")
-        self.dash_jobs_tree = ttk.Treeview(
-            jobs_card.body,
-            columns=cols,
-            show="headings",
-            style=style_name,
-            height=6,
-            selectmode="browse",
-        )
-        for key, title, w in (
-            ("ora", "Ora", 80),
-            ("ordine", "Ordine", 120),
-            ("esito", "Esito", 140),
-            ("durata", "Durata", 80),
-        ):
-            self.dash_jobs_tree.heading(key, text=title)
-            self.dash_jobs_tree.column(key, width=w)
-        self.dash_jobs_tree.pack(fill="both", expand=True)
+    def _build_placeholder_page(self) -> None:
+        parent = self.tab_placeholder
+        for child in parent.winfo_children():
+            child.destroy()
+        WorkspacePageTitle(
+            parent,
+            "Sezione",
+            "Area di navigazione allineata alla reference — contenuto operativo collegato ai moduli esistenti.",
+        ).pack(fill="x", anchor="nw", pady=(8, 12))
+        card = Card(parent, title="In preparazione", subtitle="Shell condivisa attiva")
+        card.pack(fill="x", pady=8)
+        ctk.CTkLabel(
+            card.body,
+            text=(
+                "Questa voce di navigazione fa parte della shell VISION Control Panel.\n"
+                "Usa Impostazioni, EniSpace, Lavorazioni o Trasporto Monete per le operazioni già disponibili."
+            ),
+            font=ctk.CTkFont(family=font_family(), size=14),
+            text_color=COLORS["muted"],
+            justify="left",
+            wraplength=720,
+        ).pack(anchor="w", pady=8)
+        ctk.CTkButton(
+            card.body,
+            text="Apri Impostazioni",
+            height=40,
+            width=180,
+            command=self.open_settings,
+        ).pack(anchor="w", pady=(8, 4))
 
     def _refresh_dashboard_metrics(self) -> None:
-        if not hasattr(self, "kpi_queue"):
-            return
+        """Aggiorna chat Control Panel (status chips + avatar) — non più KPI dashboard."""
         try:
-            pending = self.print_queue.count_pending()
+            self._refresh_chat_status_chips()
         except Exception:
-            pending = 0
-        self.kpi_queue.set_value(str(pending), "PDF pending")
-
+            pass
         try:
             snap = self.jarvis.snapshot()
-            self.kpi_jarvis.set_value(
-                str(snap.get("pending", 0)),
-                "ONLINE" if snap.get("active") else "OFFLINE",
-            )
-            self.dash_jarvis_card.status.set_status(
-                bool(snap.get("active")),
-                "ONLINE" if snap.get("active") else "OFFLINE",
-            )
-            self.dash_jarvis_card.meta.configure(
-                text=(
-                    f"In coda: {snap.get('pending', 0)}  ·  "
-                    f"Ultimo controllo: {snap.get('last_check', '—')}\n"
-                    f"In lavorazione: {snap.get('current_job', '—')}"
-                )
-            )
-            if getattr(self, "dash_jarvis_avatar", None) is not None:
-                try:
-                    self.dash_jarvis_avatar.update_from_snapshot(snap)
-                except Exception:
-                    pass
-            # Workflow heuristic from jarvis state
-            st = str(snap.get("state", "")).upper()
-            if not snap.get("active"):
-                self.dash_workflow.set_states(["waiting"] * 6)
-            elif "ERROR" in st or "ATTENTION" in st:
-                self.dash_workflow.set_states(
-                    ["done", "done", "active", "waiting", "waiting", "error"]
-                )
-            elif snap.get("processing"):
-                self.dash_workflow.set_states(
-                    ["done", "done", "active", "active", "waiting", "waiting"]
-                )
-            else:
-                self.dash_workflow.set_states(
-                    ["done", "done", "done", "done", "done", "done"]
-                    if snap.get("last_job") not in (None, "—", "")
-                    else ["waiting"] * 6
-                )
-        except Exception:
-            pass
-
-        try:
-            regs = self.db.list_mail_register(limit=200)
-            self.kpi_mail.set_value(str(len(regs)), "voci recenti")
-        except Exception:
-            pass
-
-        if hasattr(self, "dash_jobs_tree"):
-            for item in self.dash_jobs_tree.get_children():
-                self.dash_jobs_tree.delete(item)
-            try:
-                for job in self.jarvis.repo.list_jobs(limit=12):
-                    created = job.created_at or ""
-                    ora = created[11:19] if len(created) >= 19 else created
-                    self.dash_jobs_tree.insert(
-                        "",
-                        "end",
-                        values=(
-                            ora,
-                            job.order_number or "—",
-                            job.outcome or job.status or "—",
-                            job.duration_label,
-                        ),
+            av = getattr(self, "dash_jarvis_avatar", None)
+            if av is not None:
+                if hasattr(av, "update_from_snapshot"):
+                    av.update_from_snapshot(snap)
+                elif hasattr(av, "set_state"):
+                    av.set_state(
+                        str(snap.get("state") or "OFFLINE"),
+                        busy=bool(snap.get("processing")),
                     )
-            except Exception:
-                pass
-
+            detail = getattr(self, "chat_supervisor_detail", None)
+            if detail is not None:
+                detail.configure(
+                    text=(
+                        f"Stato: {snap.get('state', 'OFFLINE')}\n"
+                        f"Ultimo controllo: {snap.get('last_check', '—')}\n"
+                        f"In coda: {snap.get('pending', 0)}"
+                    )
+                )
+        except Exception:
+            pass
         try:
             self._refresh_vision_views()
         except Exception:
@@ -1009,7 +1195,7 @@ class MainWindow(ctk.CTk):
 
         self.jarvis_sim_banner = ctk.CTkLabel(
             parent,
-            text="JARVIS — SIMULAZIONE",
+            text="VISION — SIMULAZIONE",
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color="#0f172a",
             fg_color="#f59e0b",
@@ -1040,7 +1226,7 @@ class MainWindow(ctk.CTk):
         head.pack(fill="x", pady=(4, 4))
         ctk.CTkLabel(
             head,
-            text="JARVIS SUPERVISORE",
+            text="VISION SUPERVISOR",
             font=ctk.CTkFont(family=font_family(), size=16, weight="bold"),
             text_color=COLORS["accent"],
         ).pack(side="left")
@@ -1051,6 +1237,19 @@ class MainWindow(ctk.CTk):
             text_color=COLORS["muted"],
         )
         self.jarvis_online_label.pack(side="right")
+
+        ctk.CTkLabel(
+            left_status,
+            text=(
+                "Control Panel: ricevi messaggi dal Supervisor · "
+                "ATTIVA / DISATTIVA (locale o remoto WAKE/DEACTIVATE)."
+            ),
+            font=ctk.CTkFont(size=11),
+            text_color=COLORS["muted"],
+            anchor="w",
+            wraplength=520,
+            justify="left",
+        ).pack(fill="x", padx=4, pady=(0, 4))
 
         self.jarvis_state_label = ctk.CTkLabel(
             left_status,
@@ -1072,22 +1271,15 @@ class MainWindow(ctk.CTk):
         )
         self.jarvis_meta_label.pack(fill="x", padx=4, pady=(2, 10))
 
-        try:
-            self.jarvis_avatar = JarvisAvatarPanel(
-                status_body,
-                size=320,
-                level_provider=self._jarvis_avatar_level,
-            )
-            self.jarvis_avatar.grid(row=0, column=1, sticky="ne", padx=(8, 4))
-        except Exception as exc:
-            logger.warning("Avatar tab JARVIS non disponibile: %s", exc)
-            self.jarvis_avatar = None
+        # Lazy: create on first open of Supervisor / Assistente
+        self._jarvis_avatar_host = status_body
+        self.jarvis_avatar = None
 
         btns = ctk.CTkFrame(parent, fg_color="transparent")
         btns.pack(fill="x", pady=(0, 8))
         self.btn_jarvis_on = ctk.CTkButton(
             btns,
-            text="ATTIVA JARVIS",
+            text="Sveglia",
             height=36,
             fg_color=COLORS["accent"],
             hover_color=COLORS["accent_hover"],
@@ -1096,7 +1288,7 @@ class MainWindow(ctk.CTk):
         self.btn_jarvis_on.pack(side="left", padx=(0, 8))
         self.btn_jarvis_off = ctk.CTkButton(
             btns,
-            text="DISATTIVA JARVIS",
+            text="Disattiva",
             height=36,
             fg_color=COLORS["panel"],
             border_width=1,
@@ -1127,7 +1319,7 @@ class MainWindow(ctk.CTk):
         console_head.pack(fill="x", padx=10, pady=(8, 0))
         ctk.CTkLabel(
             console_head,
-            text="CONSOLE JARVIS",
+            text="CONSOLE SUPERVISOR",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color=COLORS["accent"],
         ).pack(side="left")
@@ -1172,7 +1364,7 @@ class MainWindow(ctk.CTk):
         right.pack(side="right", fill="both", expand=True, padx=(6, 0))
         ctk.CTkLabel(
             right,
-            text="JARVIS STORICO",
+            text="STORICO SUPERVISOR",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color=COLORS["accent"],
         ).pack(anchor="w", padx=10, pady=(8, 0))
@@ -1463,10 +1655,10 @@ class MainWindow(ctk.CTk):
         core = "ONLINE" if snap.get("core_online") else "OFFLINE"
         asst = "ONLINE" if snap.get("assistant_online") else "OFFLINE"
         state = snap.get("assistant_state") or "—"
-        if hasattr(self, "vision_status_label"):
+        if getattr(self, "vision_status_label", None) is not None:
             self.vision_status_label.configure(
                 text=(
-                    f"CORE {core}  ·  {ASSISTANT_NAME} {asst}  ·  stato {state}"
+                    f"CORE {core}  ·  VISION {asst}  ·  stato {state}"
                 )
             )
         lines = []
@@ -1474,12 +1666,12 @@ class MainWindow(ctk.CTk):
             status = m.get("status", "?")
             dot = "●"
             lines.append(f"{dot} {m.get('name')}  [{status}]  v{m.get('version')}")
-        if hasattr(self, "vision_modules_label"):
+        if getattr(self, "vision_modules_label", None) is not None:
             self.vision_modules_label.configure(
                 text="MODULI:\n" + ("\n".join(lines) if lines else "(nessuno)")
             )
         kpi = snap.get("kpi") or {}
-        if hasattr(self, "kpi_v_today"):
+        if getattr(self, "kpi_v_today", None) is not None:
             self.kpi_v_today.set_value(str(kpi.get("today", 0)), "VisionJob")
             self.kpi_v_proc.set_value(str(kpi.get("processing", 0)), "")
             self.kpi_v_queue.set_value(str(kpi.get("queued", 0)), "")
@@ -1534,7 +1726,7 @@ class MainWindow(ctk.CTk):
             )
         try:
             self.sidebar.set_system_status(
-                f"VIS•ION {core} · {ASSISTANT_NAME} {state}"
+                f"VIS•ION {core} · VISION {state}"
             )
         except Exception:
             pass
@@ -1567,7 +1759,7 @@ class MainWindow(ctk.CTk):
     def _on_vision_assistant_state(self, state: str) -> None:
         def _apply() -> None:
             try:
-                self.sidebar.set_system_status(f"{ASSISTANT_NAME}: {state}")
+                self.sidebar.set_system_status(f"VISION: {state}")
             except Exception:
                 pass
 
@@ -1576,30 +1768,92 @@ class MainWindow(ctk.CTk):
     def _on_remote_status(self, status: str) -> None:
         self._post_ui(lambda: self._update_remote_indicator(status))
 
-    def _update_remote_indicator(self, status: str) -> None:
-        if not hasattr(self, "remote_indicator"):
-            return
-        st = (status or DeviceStatus.DISABLED).upper()
-        if st == DeviceStatus.ONLINE:
-            text, color = "REMOTE  ● CONNECTED", COLORS["success"]
-        elif st == DeviceStatus.DEGRADED:
-            text, color = "REMOTE  ● DEGRADED", COLORS["warning"]
-        elif st == DeviceStatus.DISABLED:
-            text, color = "REMOTE  ○ DISABLED", COLORS["muted"]
-        else:
-            text, color = f"REMOTE  ○ {st}", COLORS["muted"]
+    def _remote_error_snippet(self) -> str:
         try:
-            self.remote_indicator.configure(text=text, text_color=color)
+            err = str(getattr(self.remote_agent, "last_error", "") or "").strip()
         except Exception:
-            pass
+            err = ""
+        return err[:120]
+
+    def _update_remote_indicator(self, status: str) -> None:
+        st = (status or DeviceStatus.DISABLED).upper()
+        err = self._remote_error_snippet()
+        prev = getattr(self, "_remote_status_cache", None)
+        if st == DeviceStatus.ONLINE:
+            label, tone = "Online", "ok"
+            self._remote_last_notified_error = ""
+        elif st == DeviceStatus.DEGRADED:
+            label, tone = "Degradato", "warn"
+            if err:
+                label = "Degradato"
+        elif st == DeviceStatus.DISABLED:
+            label, tone = "Offline", "muted"
+        else:
+            label, tone = st.title(), "muted"
+
+        chip = getattr(self, "chip_agent", None)
+        if chip is not None:
+            try:
+                chip.set_state(label, tone=tone)
+            except Exception:
+                pass
+
+        ind = getattr(self, "remote_indicator", None)
+        if ind is not None:
+            try:
+                color = {
+                    "ok": COLORS["success"],
+                    "warn": COLORS["warning"],
+                    "muted": COLORS["muted"],
+                }.get(tone, COLORS["muted"])
+                ind.configure(text=f"REMOTE  ·  {label.upper()}", text_color=color)
+            except Exception:
+                pass
+
         try:
             on = bool(getattr(self.remote_agent, "enabled", False)) and st != DeviceStatus.DISABLED
-            self.remote_toggle_btn.configure(
-                text="REMOTE CONTROL ON" if on else "REMOTE CONTROL OFF",
-                fg_color=COLORS["accent"] if on else COLORS["panel_alt"],
-            )
+            btn = getattr(self, "remote_toggle_btn", None)
+            if btn is not None:
+                btn.configure(
+                    text="Remote ON" if on else "Remote OFF",
+                    fg_color=COLORS["accent"] if on else COLORS["panel_alt"],
+                )
         except Exception:
             pass
+
+        if prev != st:
+            self._remote_status_cache = st
+            if st == DeviceStatus.ONLINE:
+                self._append_chat_message(
+                    "Agent remoto connesso.", role="system", level="SUCCESS"
+                )
+            elif st == DeviceStatus.DEGRADED:
+                self._append_chat_message(
+                    f"Agent remoto degradato{(': ' + err) if err else '.'}",
+                    role="system",
+                    level="WARNING",
+                )
+            elif st == DeviceStatus.DISABLED and prev is not None:
+                self._append_chat_message(
+                    "Agent remoto offline.", role="system", level="INFO"
+                )
+
+        if st == DeviceStatus.DEGRADED and err and err != getattr(
+            self, "_remote_last_notified_error", ""
+        ):
+            self._remote_last_notified_error = err
+            try:
+                self.append_activity(f"Remote Agent non raggiungibile: {err}")
+            except Exception:
+                pass
+            try:
+                self._toasts.show(
+                    err[:140],
+                    variant="error",
+                    title="Remote Agent",
+                )
+            except Exception:
+                pass
 
     def _toggle_remote_control(self) -> None:
         """Kill switch locale — non dipende dal cloud."""
@@ -1609,9 +1863,11 @@ class MainWindow(ctk.CTk):
             if not messagebox.askyesno(
                 APP_NAME,
                 "Attivare REMOTE CONTROL?\n\n"
-                "L'agent si collegherà in uscita al backend (modalità "
-                f"{self.remote_config.mode}).\n"
-                "Di default i comandi operativi restano sotto kill switch locale.",
+                "Canale sottile verso il backend "
+                f"({self.remote_config.mode}):\n"
+                "• riceve messaggi/stato dal Supervisor\n"
+                "• accetta solo WAKE / DEACTIVATE Supervisor (+ GET_STATUS)\n\n"
+                "Non è una console di orchestrazione job.",
             ):
                 return
         try:
@@ -1624,14 +1880,18 @@ class MainWindow(ctk.CTk):
             if new_state
             else DeviceStatus.DISABLED
         )
-        self.append_activity(
+        msg = (
             f"REMOTE CONTROL {'ON' if new_state else 'OFF'} "
             f"(device={self.remote_config.device_id}, mode={self.remote_config.mode})"
         )
+        self.append_activity(msg)
+        self._append_chat_message(msg, role="system", level="SUCCESS" if new_state else "INFO")
 
     # ================================================================== lifecycle
     def _post_init(self) -> None:
-        self.append_activity(f"{APP_NAME} avviata — {PRODUCT_FULL_NAME}")
+        boot = f"{APP_NAME} avviata — {PRODUCT_FULL_NAME}"
+        self.append_activity(boot)
+        self._append_chat_message(boot, role="system", level="INFO")
         try:
             self._refresh_vision_views()
         except Exception:
@@ -1645,9 +1905,9 @@ class MainWindow(ctk.CTk):
                 else DeviceStatus.DISABLED
             )
             if not started:
-                self.append_activity(
-                    f"Remote Agent OFF (device {self.remote_config.device_id})"
-                )
+                off = f"Remote Agent OFF (device {self.remote_config.device_id})"
+                self.append_activity(off)
+                self._append_chat_message(off, role="system", level="INFO")
         except Exception as exc:
             logger.warning("Remote Agent non avviato: %s", exc)
             self._update_remote_indicator(DeviceStatus.DISABLED)
@@ -1732,30 +1992,84 @@ class MainWindow(ctk.CTk):
 
     # ================================================================== activity
     def append_activity(self, text: str, *, from_logger: bool = False) -> None:
-        self.activity_box.configure(state="normal")
-        if from_logger:
-            self.activity_box.insert("end", text + "\n")
-        else:
-            from datetime import datetime
+        box = getattr(self, "activity_box", None)
+        if box is not None:
+            try:
+                box.configure(state="normal")
+                if from_logger:
+                    box.insert("end", text + "\n")
+                else:
+                    from datetime import datetime
 
-            ts = datetime.now().strftime("%H:%M")
-            self.activity_box.insert("end", f"{ts} {text}\n")
+                    ts = datetime.now().strftime("%H:%M")
+                    box.insert("end", f"{ts} {text}\n")
+                box.see("end")
+                box.configure(state="disabled")
+            except Exception:
+                pass
+        if not from_logger:
             logger.info(text)
-        self.activity_box.see("end")
-        self.activity_box.configure(state="disabled")
+
+
+    def _append_chat_message(
+        self,
+        text: str,
+        *,
+        role: str = "supervisor",
+        level: str = "INFO",
+        timestamp: str | None = None,
+    ) -> None:
+        chat = getattr(self, "supervisor_chat", None)
+        if chat is None:
+            return
+        try:
+            chat.append(text, role=role, level=level, timestamp=timestamp)
+        except Exception:
+            pass
+
+    def _refresh_chat_status_chips(self) -> None:
+        chip_s = getattr(self, "chip_supervisor", None)
+        if chip_s is not None:
+            try:
+                snap = self.jarvis.snapshot()
+                active = bool(snap.get("active"))
+                processing = bool(snap.get("processing"))
+                if not active:
+                    chip_s.set_state("In standby", tone="muted")
+                elif processing:
+                    chip_s.set_state("Occupato", tone="info")
+                else:
+                    chip_s.set_state("Sveglio", tone="ok")
+            except Exception:
+                chip_s.set_state("—", tone="muted")
+        chip_a = getattr(self, "chip_agent", None)
+        if chip_a is not None and hasattr(self, "remote_agent"):
+            try:
+                st = str(getattr(self.remote_agent, "status", DeviceStatus.DISABLED) or "").upper()
+                enabled = bool(getattr(self.remote_agent, "enabled", False))
+                if not enabled or st == DeviceStatus.DISABLED:
+                    chip_a.set_state("Offline", tone="muted")
+                elif st == DeviceStatus.ONLINE:
+                    chip_a.set_state("Online", tone="ok")
+                elif st == DeviceStatus.DEGRADED:
+                    chip_a.set_state("Degradato", tone="warn")
+                else:
+                    chip_a.set_state(st.title() or "—", tone="muted")
+            except Exception:
+                pass
 
     def set_session_ui(self, active: bool) -> None:
         if active:
             self.session_label.configure(
                 text="eniSpace · online", text_color=SUCCESS
             )
-            if hasattr(self, "kpi_session"):
+            if getattr(self, "kpi_session", None) is not None:
                 self.kpi_session.set_value("Online", "eniSpace")
         else:
             self.session_label.configure(
                 text="eniSpace · offline", text_color=COLORS["muted"]
             )
-            if hasattr(self, "kpi_session"):
+            if getattr(self, "kpi_session", None) is not None:
                 self.kpi_session.set_value("Offline", "eniSpace")
 
     def _set_busy(self, busy: bool, message: str = "Operazione in corso...") -> None:
@@ -1787,7 +2101,74 @@ class MainWindow(ctk.CTk):
             self.progress_frame.pack_forget()
 
     # ================================================================== settings
+    def _ensure_jarvis_tab_avatar(self) -> None:
+        if getattr(self, "jarvis_avatar", None) is not None:
+            return
+        host = getattr(self, "_jarvis_avatar_host", None)
+        if host is None:
+            return
+        try:
+            try:
+                s = self.db.get_settings()
+                mid = (s.jarvis_avatar_model or "vision_avatar_v1").strip()
+                mode = (getattr(s, "jarvis_avatar_mode", None) or "3d").strip()
+            except Exception:
+                mid = "vision_avatar_v1"
+                mode = "3d"
+            self.jarvis_avatar = VisionAvatarPanel(
+                host,
+                size=260,
+                level_provider=self._jarvis_avatar_level,
+                model_id=mid,
+                mode=mode,
+            )
+            self.jarvis_avatar.grid(row=0, column=1, sticky="ne", padx=(8, 4))
+        except Exception as exc:
+            logger.warning("Avatar tab Supervisor non disponibile: %s", exc)
+            self.jarvis_avatar = None
+
+    def _avatar_react(self, event: str, *, intensity: float = 1.0) -> None:
+        """Burst pseudo-3D su rail + panel Assistente (comandi UI)."""
+        targets = (
+            getattr(self, "rail_avatar", None),
+            getattr(self, "jarvis_avatar", None),
+            getattr(self, "dash_jarvis_avatar", None),
+        )
+        for target in targets:
+            if target is None:
+                continue
+            try:
+                if hasattr(target, "react"):
+                    target.react(event, intensity=intensity)
+                elif hasattr(target, "avatar") and hasattr(target.avatar, "react"):
+                    target.avatar.react(event, intensity=intensity)
+            except Exception:
+                pass
+
+    def _build_settings_page(self) -> None:
+        parent = self.tab_settings
+        self._settings_page = SettingsPage(
+            parent,
+            self.db,
+            self.credentials,
+            self.enispace,
+            on_saved=self._apply_settings,
+            on_test_access=lambda: self._run_test_access(None),
+            on_record_navigation=self._start_recording,
+            on_open_marketplace=self._open_marketplace,
+            on_open_ordini=self._open_ordini,
+            on_open_document_flow=self._open_document_flow,
+            on_activity=self.append_activity,
+            show_chrome=False,
+        )
+        self._settings_page.pack(fill="both", expand=True)
+
     def open_settings(self) -> None:
+        """Apre Impostazioni in-app (layout UI pack)."""
+        self._navigate("impostazioni")
+
+    def open_settings_dialog(self) -> None:
+        """Compat: dialog toplevel se necessario."""
         if self._settings_win and self._settings_win.winfo_exists():
             self._settings_win.focus()
             return
@@ -1805,28 +2186,162 @@ class MainWindow(ctk.CTk):
             on_activity=self.append_activity,
         )
 
+    def _refresh_assistant_rail(self) -> None:
+        if not hasattr(self, "assistant_rail"):
+            return
+        try:
+            snap = self.jarvis.snapshot()
+            active = bool(snap.get("active"))
+            processing = bool(snap.get("processing"))
+            self.assistant_rail.set_status(
+                "supervisor",
+                "Attivo" if active else "Offline",
+                ok=active,
+            )
+            if getattr(self, "rail_avatar", None) is not None:
+                try:
+                    state = str(snap.get("state") or "OFFLINE")
+                    self.rail_avatar.set_state(state, busy=processing)
+                except Exception:
+                    pass
+            try:
+                if hasattr(self.app_header, "set_supervisor"):
+                    self.app_header.set_supervisor(active)
+            except Exception:
+                pass
+        except Exception:
+            self.assistant_rail.set_status("supervisor", "—")
+        try:
+            snap = self.jarvis.snapshot()
+            modules = snap.get("modules") or []
+            eni = next((m for m in modules if m.get("id") == "enispace"), None)
+            mail = next((m for m in modules if m.get("id") == "mail"), None)
+            if eni is not None:
+                eni_ok = bool(eni.get("online"))
+                self._enispace_session_ok = eni_ok
+                self.assistant_rail.set_status(
+                    "enispace",
+                    "Online" if eni_ok else "Offline",
+                    ok=eni_ok,
+                )
+            else:
+                online = bool(getattr(self, "_enispace_session_ok", False))
+                sess = ""
+                try:
+                    sess = str(self.app_header.session_label.cget("text") or "")
+                except Exception:
+                    pass
+                eni_ok = "online" in sess.lower() or online
+                self.assistant_rail.set_status(
+                    "enispace", "Online" if eni_ok else "Offline", ok=eni_ok
+                )
+            if mail is not None:
+                mail_ok = bool(mail.get("online"))
+                self.assistant_rail.set_status(
+                    "mail",
+                    "Online" if mail_ok else "Offline",
+                    ok=mail_ok,
+                )
+            else:
+                from utils.paths import KEYRING_MAIL_SERVICE
+
+                mail_ok = bool(CredentialService(KEYRING_MAIL_SERVICE).load())
+                self.assistant_rail.set_status(
+                    "mail", "Connesso" if mail_ok else "Non configurata", ok=mail_ok
+                )
+        except Exception:
+            pass
+        try:
+            cfg = getattr(self, "remote_config", None) or RemoteConfig.load()
+            rem_ok = bool(cfg.enabled)
+            self.assistant_rail.set_status(
+                "devices",
+                "Abilitato" if rem_ok else "Disabilitato",
+                ok=rem_ok,
+            )
+            if hasattr(self, "status_footer"):
+                self.status_footer.set_connection(
+                    f"VISION AGENT  ·  {cfg.mode}" + (" · ON" if rem_ok else " · OFF"),
+                    ok=rem_ok if rem_ok else None,
+                )
+        except Exception:
+            pass
+        try:
+            pending = 0
+            if hasattr(self, "jarvis"):
+                pending = int(self.jarvis.snapshot().get("pending") or 0)
+            self.assistant_rail.set_status(
+                "jobs",
+                f"{pending} in coda" if pending else "0 in coda",
+                ok=None if pending == 0 else True,
+            )
+        except Exception:
+            pass
+
     def _apply_settings(self) -> None:
         settings = self.db.get_settings()
         set_debug_mode(settings.debug_mode)
-        self.download_service.set_base_folder(settings.download_folder)
-        self.enispace.base_url = settings.enispace_base_url
+        portal_browser = load_portal_browser_runtime(self.db, app_settings=settings)
+        paths_rt = load_paths_runtime(self.db, app_settings=settings)
+        self.download_service.set_base_folder(paths_rt.download_dir)
+        self.enispace.base_url = portal_browser.base_url
+        from utils.paths import (
+            ENISPACE_STARTUP_URL,
+            chrome_executable_path,
+            resolve_browser_user_data_dir,
+        )
+
+        use_system = False  # come Utility: profilo isolato
+        profile_name = (
+            getattr(settings, "chrome_profile_directory", None) or "Default"
+        ).strip() or "Default"
+        exe = chrome_executable_path()
+        prev = self.browser.config
+        self.browser.config = BrowserConfig(
+            headless=False,
+            hidden=portal_browser.hidden,
+            timeout_ms=portal_browser.timeout_ms,
+            debug=portal_browser.debug,
+            user_data_dir=resolve_browser_user_data_dir(use_system_profile=False),
+            downloads_path=prev.downloads_path,
+            channel=prev.channel or "chrome",
+            use_system_chrome_profile=use_system,
+            chrome_profile_directory=profile_name,
+            executable_path=str(exe) if exe else None,
+            startup_url=getattr(prev, "startup_url", None) or ENISPACE_STARTUP_URL,
+        )
         self.enispace.configure_browser(
-            hidden=settings.browser_hidden,
-            timeout_ms=settings.browser_timeout_ms,
-            debug=settings.debug_mode,
+            hidden=portal_browser.hidden,
+            timeout_ms=portal_browser.timeout_ms,
+            debug=portal_browser.debug,
         )
         self._load_autosync_ui()
         self._schedule_autosync()
         # Propaga livello animazioni avatar (solo UI)
         level = (settings.jarvis_avatar_level or "full").strip().lower()
+        model_id = (getattr(settings, "jarvis_avatar_model", None) or "vision_avatar_v1").strip()
+        avatar_mode = (getattr(settings, "jarvis_avatar_mode", None) or "3d").strip()
         for panel in (
             getattr(self, "jarvis_avatar", None),
             getattr(self, "dash_jarvis_avatar", None),
+            getattr(self, "rail_avatar", None),
         ):
             if panel is None:
                 continue
             try:
                 panel.set_level(level)
+            except Exception:
+                pass
+            try:
+                set_mode = getattr(panel, "set_mode", None)
+                if callable(set_mode):
+                    set_mode(avatar_mode)
+            except Exception:
+                pass
+            try:
+                set_model = getattr(panel, "set_model", None)
+                if callable(set_model):
+                    set_model(model_id)
             except Exception:
                 pass
         self._refresh_jarvis_status_ui()
@@ -1840,12 +2355,12 @@ class MainWindow(ctk.CTk):
 
     # ================================================================== autosync
     def _load_autosync_ui(self) -> None:
-        settings = self.db.get_settings()
+        mailbox = load_mailbox_runtime(self.db)
         if hasattr(self, "autosync_var"):
-            self.autosync_var.set(bool(settings.autosync_enabled))
+            self.autosync_var.set(bool(mailbox.enabled))
         if hasattr(self, "autosync_interval_var"):
             self.autosync_interval_var.set(
-                str(max(1, int(settings.autosync_interval_minutes or 15)))
+                str(max(1, int(mailbox.autosync_interval_minutes)))
             )
         self._update_autosync_status()
 
@@ -1898,19 +2413,19 @@ class MainWindow(ctk.CTk):
 
     def _schedule_autosync(self) -> None:
         self._cancel_autosync()
-        settings = self.db.get_settings()
-        if not settings.autosync_enabled:
+        mailbox = load_mailbox_runtime(self.db)
+        if not mailbox.enabled:
             self._update_autosync_status()
             return
-        minutes = max(1, int(settings.autosync_interval_minutes or 15))
+        minutes = max(1, int(mailbox.autosync_interval_minutes))
         ms = minutes * 60 * 1000
         self._autosync_after_id = self.after(ms, self._autosync_tick)
         self._update_autosync_status()
 
     def _autosync_tick(self) -> None:
         self._autosync_after_id = None
-        settings = self.db.get_settings()
-        if not settings.autosync_enabled:
+        mailbox = load_mailbox_runtime(self.db)
+        if not mailbox.enabled:
             return
         if self._busy or self.worker.is_running or self._autosync_running:
             self.append_activity(
@@ -2106,21 +2621,22 @@ class MainWindow(ctk.CTk):
             messagebox.showwarning(
                 "Occupato",
                 "Un'operazione è già in corso"
-                + (" (JARVIS in lavorazione)." if self.jarvis.is_processing else "."),
+                + (" (Supervisor in lavorazione)." if self.jarvis.is_processing else "."),
                 parent=self,
             )
             return
 
         settings = self.db.get_settings()
-        folder = settings.imap_folder or "INBOX.MdA_Eni"
-        unread_only = bool(settings.imap_unread_only)
+        mailbox = load_mailbox_runtime(self.db, app_settings=settings)
+        folder = mailbox.folder or "INBOX.MdA_Eni"
+        unread_only = bool(mailbox.unread_only)
 
         from services.credential_service import CredentialService
         from services.imap_mail_service import ImapConfig
         from utils.paths import KEYRING_MAIL_SERVICE
 
         mail_creds = CredentialService(KEYRING_MAIL_SERVICE).load()
-        username = (mail_creds.username if mail_creds else "") or settings.imap_username
+        username = (mail_creds.username if mail_creds else "") or mailbox.username
         password = mail_creds.password if mail_creds else ""
         if not username or not password:
             if silent:
@@ -2140,7 +2656,7 @@ class MainWindow(ctk.CTk):
         if not silent:
             if not messagebox.askyesno(
                 "Sync casella IMAP",
-                f"Host: {settings.imap_host or 'pop.securemail.pro'}\n"
+                f"Host: {mailbox.host or 'pop.securemail.pro'}\n"
                 f"Cartella: {folder}\n"
                 f"Filtro: mail {'non lette' if unread_only else 'tutte'}\n\n"
                 "Elaborare le mail (download MdA + coda stampa)?",
@@ -2153,6 +2669,8 @@ class MainWindow(ctk.CTk):
             True,
             "Autosync IMAP in corso..." if silent else "Sync casella IMAP in corso...",
         )
+        if not silent:
+            self._avatar_react("mail")
         self.append_activity(
             f"{'Autosync' if silent else 'Sync'} IMAP avviato: {folder}"
         )
@@ -2177,16 +2695,16 @@ class MainWindow(ctk.CTk):
                 self._post_ui(lambda i=item: self._on_pdf_extracted(i))
 
             cfg = ImapConfig(
-                host=settings.imap_host or "pop.securemail.pro",
-                port=int(settings.imap_port or 993),
-                security=settings.imap_security or "SSL",
+                host=mailbox.host or "pop.securemail.pro",
+                port=int(mailbox.port or 993),
+                security=mailbox.security or "SSL",
                 username=username,
                 password=password,
                 folder=folder,
                 unread_only=unread_only,
-                smtp_host=settings.smtp_host or "authsmtp.securemail.pro",
-                smtp_port=int(settings.smtp_port or 465),
-                smtp_security=settings.smtp_security or "SSL",
+                smtp_host=mailbox.smtp_host or "authsmtp.securemail.pro",
+                smtp_port=int(mailbox.smtp_port or 465),
+                smtp_security=mailbox.smtp_security or "SSL",
             )
             # Una sola connessione IMAP (niente test_connection prima):
             # doppio login consecutivo su SecureMail poteva bloccare SYNC.
@@ -2277,7 +2795,8 @@ class MainWindow(ctk.CTk):
             return
 
         settings = self.db.get_settings()
-        folder = settings.imap_folder or "INBOX.MdA_Eni"
+        mailbox = load_mailbox_runtime(self.db, app_settings=settings)
+        folder = mailbox.folder or "INBOX.MdA_Eni"
         today = date_cls.today().isoformat()
 
         from services.credential_service import CredentialService
@@ -2285,7 +2804,7 @@ class MainWindow(ctk.CTk):
         from utils.paths import KEYRING_MAIL_SERVICE
 
         mail_creds = CredentialService(KEYRING_MAIL_SERVICE).load()
-        username = (mail_creds.username if mail_creds else "") or settings.imap_username
+        username = (mail_creds.username if mail_creds else "") or mailbox.username
         password = mail_creds.password if mail_creds else ""
         if not username or not password:
             messagebox.showwarning(
@@ -2328,16 +2847,16 @@ class MainWindow(ctk.CTk):
                 self._post_ui(lambda i=item: self._on_pdf_extracted(i))
 
             cfg = ImapConfig(
-                host=settings.imap_host or "pop.securemail.pro",
-                port=int(settings.imap_port or 993),
-                security=settings.imap_security or "SSL",
+                host=mailbox.host or "pop.securemail.pro",
+                port=int(mailbox.port or 993),
+                security=mailbox.security or "SSL",
                 username=username,
                 password=password,
                 folder=folder,
                 unread_only=False,
-                smtp_host=settings.smtp_host or "authsmtp.securemail.pro",
-                smtp_port=int(settings.smtp_port or 465),
-                smtp_security=settings.smtp_security or "SSL",
+                smtp_host=mailbox.smtp_host or "authsmtp.securemail.pro",
+                smtp_port=int(mailbox.smtp_port or 465),
+                smtp_security=mailbox.smtp_security or "SSL",
             )
             progress(f"Rielaborazione mail del {today} da {cfg.host} / {folder}...")
             return self.batch_service.process_imap_folder(
@@ -2548,8 +3067,8 @@ class MainWindow(ctk.CTk):
         if path is None and self._extracted_pdf_paths:
             path = self._extracted_pdf_paths[-1]
         if path is None:
-            settings = self.db.get_settings()
-            folder = Path(settings.download_folder or default_download_dir())
+            paths_rt = load_paths_runtime(self.db)
+            folder = Path(paths_rt.download_dir)
         else:
             folder = path.parent if path.is_file() else path
         try:
@@ -2622,6 +3141,7 @@ class MainWindow(ctk.CTk):
             return
 
         self._set_busy(True, "Stampa coda in corso...")
+        self._avatar_react("print")
         self.append_activity(f"Stampa a cascata di {len(pending)} PDF...")
 
         def work():
@@ -2707,14 +3227,16 @@ class MainWindow(ctk.CTk):
 
     def _execute_contract_flow(self, number: str) -> None:
         self._set_busy(True, "Ricerca ordine in corso...")
+        self._avatar_react("search")
         self.append_activity(f"Ricerca ordine {number}")
 
         def work():
             settings = self.db.get_settings()
+            portal_browser = load_portal_browser_runtime(self.db, app_settings=settings)
             self.enispace.configure_browser(
-                hidden=settings.browser_hidden,
-                timeout_ms=settings.browser_timeout_ms,
-                debug=settings.debug_mode,
+                hidden=portal_browser.hidden,
+                timeout_ms=portal_browser.timeout_ms,
+                debug=portal_browser.debug,
             )
             notice = self._current_notification
             result = self.enispace.search_contract(
@@ -2847,6 +3369,7 @@ class MainWindow(ctk.CTk):
         already = sum(1 for d in docs if d.status == DocumentStatus.DOWNLOADED)
 
         self.append_activity("Contratto trovato.")
+        self._avatar_react("success", intensity=0.85)
         self.append_activity(f"Documenti rilevati: {len(docs)}")
         if already:
             self.append_activity(f"{already} già presenti.")
@@ -2921,6 +3444,7 @@ class MainWindow(ctk.CTk):
         msg = exc.message if isinstance(exc, EniSpaceError) else (
             "Si è verificato un errore. Consultare il log tecnico."
         )
+        self._avatar_react("error")
         self.append_activity(msg.split("\n")[0])
         self.set_session_ui(self.enispace.is_session_active)
         self.db.log_operation(
@@ -3090,6 +3614,7 @@ class MainWindow(ctk.CTk):
 
         number = self._current_contract
         self._set_busy(True, "Download in corso...")
+        self._avatar_react("download")
         self.append_activity(f"Download di {len(docs)} documento/i...")
 
         def work():
@@ -3147,6 +3672,7 @@ class MainWindow(ctk.CTk):
     def _on_download_done(self, results) -> None:
         self._set_busy(False)
         self.append_activity("Download completato.")
+        self._avatar_react("success", intensity=0.7)
         # Ricarica documenti da DB se aggiornati — per ora refresh UI locale
         if self._current_contract:
             contract = self.db.get_contract(self._current_contract)
@@ -3154,7 +3680,8 @@ class MainWindow(ctk.CTk):
                 self._documents = self.db.list_documents(contract.id)
                 self._render_documents(self._documents)
         settings = self.db.get_settings()
-        if settings.open_folder_after_download and self._current_contract:
+        portal_browser = load_portal_browser_runtime(self.db, app_settings=settings)
+        if portal_browser.open_folder_after_download and self._current_contract:
             try:
                 self.download_service.open_folder(self._current_contract)
             except RuntimeError as exc:
@@ -3162,6 +3689,7 @@ class MainWindow(ctk.CTk):
 
     def _on_download_error(self, exc: Exception) -> None:
         self._set_busy(False)
+        self._avatar_react("error")
         msg = exc.message if isinstance(exc, EniSpaceError) else (
             "Download fallito. Consultare il log tecnico."
         )
@@ -3227,7 +3755,11 @@ class MainWindow(ctk.CTk):
             return
 
         self._set_busy(True, "Test accesso eniSpace...")
-        self.append_activity("Connessione a eniSpace...")
+        self._avatar_react("login", intensity=0.8)
+        self.append_activity(
+            "Connessione a eniSpace... Se compare Microsoft login, "
+            "completare MFA/SSO in Chrome (non chiudere VISION)."
+        )
 
         def work():
             self._apply_settings()
@@ -3370,6 +3902,7 @@ class MainWindow(ctk.CTk):
         if self._busy:
             return
         self._set_busy(True, "Apertura flusso documenti...")
+        self._avatar_react("ack")
         self.append_activity(
             "Flusso: Ordini → Marketplace → Dashboard filtri..."
         )
@@ -3539,22 +4072,23 @@ class MainWindow(ctk.CTk):
         from utils.paths import KEYRING_MAIL_SERVICE
 
         settings = self.db.get_settings()
+        mailbox = load_mailbox_runtime(self.db, app_settings=settings)
         mail_creds = CredentialService(KEYRING_MAIL_SERVICE).load()
-        username = (mail_creds.username if mail_creds else "") or settings.imap_username
+        username = (mail_creds.username if mail_creds else "") or mailbox.username
         password = mail_creds.password if mail_creds else ""
         if not username or not password:
             return None
         return ImapConfig(
-            host=settings.imap_host or "pop.securemail.pro",
-            port=int(settings.imap_port or 993),
-            security=settings.imap_security or "SSL",
+            host=mailbox.host or "pop.securemail.pro",
+            port=int(mailbox.port or 993),
+            security=mailbox.security or "SSL",
             username=username,
             password=password,
-            folder=settings.imap_folder or "INBOX.MdA_Eni",
-            unread_only=bool(settings.imap_unread_only),
-            smtp_host=settings.smtp_host or "authsmtp.securemail.pro",
-            smtp_port=int(settings.smtp_port or 465),
-            smtp_security=settings.smtp_security or "SSL",
+            folder=mailbox.folder or "INBOX.MdA_Eni",
+            unread_only=bool(mailbox.unread_only),
+            smtp_host=mailbox.smtp_host or "authsmtp.securemail.pro",
+            smtp_port=int(mailbox.smtp_port or 465),
+            smtp_security=mailbox.smtp_security or "SSL",
         )
 
     def _jarvis_app_busy(self) -> bool:
@@ -3565,14 +4099,22 @@ class MainWindow(ctk.CTk):
 
     def _on_jarvis_log_entry(self, entry) -> None:
         def ui() -> None:
+            tag = (getattr(entry, "level", None) or LogLevel.INFO)
+            tag = str(tag).upper()
+            if tag not in ("INFO", "SUCCESS", "WARNING", "ERROR"):
+                tag = "INFO"
+            msg = getattr(entry, "message", "") or ""
+            ts = getattr(entry, "timestamp", None) or ""
+            # Chat transcript (messaggi Supervisor → utente)
+            if msg:
+                self._append_chat_message(
+                    msg, role="supervisor", level=tag, timestamp=str(ts)[-8:] if ts else None
+                )
             if not hasattr(self, "jarvis_console"):
                 return
             try:
                 self.jarvis_console.configure(state="normal")
                 line = f"{entry.timestamp} — {entry.message}\n"
-                tag = (entry.level or LogLevel.INFO).upper()
-                if tag not in ("INFO", "SUCCESS", "WARNING", "ERROR"):
-                    tag = "INFO"
                 self.jarvis_console.insert("end", line, tag)
                 self.jarvis_console.see("end")
                 self.jarvis_console.configure(state="disabled")
@@ -3586,12 +4128,18 @@ class MainWindow(ctk.CTk):
             try:
                 ev = str(getattr(payload, "event", "") or "").lower()
                 msg = getattr(payload, "message", "") or ev
+                level = "INFO"
                 if "error" in ev or "fail" in ev:
-                    self._toasts.show(msg[:140], variant="error", title="JARVIS")
+                    level = "ERROR"
+                    self._toasts.show(msg[:140], variant="error", title="Supervisor")
                 elif "complete" in ev or "success" in ev or "done" in ev or "printed" in ev:
+                    level = "SUCCESS"
                     self._toasts.show(msg[:140], variant="success", title="Completato")
                 elif "warn" in ev:
+                    level = "WARNING"
                     self._toasts.show(msg[:140], variant="warning", title="Attenzione")
+                if msg:
+                    self._append_chat_message(str(msg), role="supervisor", level=level)
             except Exception:
                 pass
 
@@ -3603,7 +4151,7 @@ class MainWindow(ctk.CTk):
             self.jarvis_console.configure(state="normal")
             self.jarvis_console.delete("1.0", "end")
             self.jarvis_console.configure(state="disabled")
-        self.append_activity("Console JARVIS svuotata (storico persistente intatto).")
+        self.append_activity("Console Supervisor svuotata (storico persistente intatto).")
 
     def _jarvis_activate(self) -> None:
         settings = self.db.get_settings()
@@ -3611,18 +4159,29 @@ class MainWindow(ctk.CTk):
         self.db.save_settings(settings)
         if self._jarvis_imap_config() is None:
             messagebox.showwarning(
-                "JARVIS",
+                "VISION Supervisor",
                 "Credenziali casella IMAP mancanti.\n"
-                "Configurale in Impostazioni prima di attivare JARVIS.",
+                "Configurale in Impostazioni prima di attivare il Supervisor.",
                 parent=self,
             )
             return
         self.jarvis.start()
-        self.append_activity("JARVIS attivato.")
+        self._avatar_react("login")
+        self._append_chat_message("Sveglia", role="user", level="INFO")
+        self.append_activity(
+            "VISION Supervisor attivato — verifica moduli e login se offline."
+        )
+        self._append_chat_message(
+            "Mi sto svegliando. Verifico moduli e login se offline.",
+            role="supervisor",
+            level="SUCCESS",
+        )
         self._refresh_jarvis_status_ui()
         self.refresh_jarvis_history()
         try:
-            self._toasts.show("Supervisore avviato", variant="jarvis", title="JARVIS ON")
+            self._toasts.show(
+                "Supervisore avviato", variant="jarvis", title="SUPERVISOR ON"
+            )
         except Exception:
             pass
 
@@ -3631,14 +4190,32 @@ class MainWindow(ctk.CTk):
         settings.jarvis_enabled = False
         self.db.save_settings(settings)
         self.jarvis.stop()
-        self.append_activity("JARVIS disattivato.")
+        self._avatar_react("ack", intensity=0.6)
+        self._append_chat_message("Disattiva", role="user", level="INFO")
+        self.append_activity("VISION Supervisor disattivato.")
+        self._append_chat_message(
+            "Mi metto in standby. Usa Sveglia quando ti servo.",
+            role="supervisor",
+            level="WARNING",
+        )
         self._refresh_jarvis_status_ui()
         try:
             self._toasts.show(
-                "Supervisore arrestato", variant="warning", title="JARVIS OFF"
+                "Supervisore arrestato", variant="warning", title="SUPERVISOR OFF"
             )
         except Exception:
             pass
+
+    @staticmethod
+    def _format_modules_line(snap: dict) -> str:
+        modules = snap.get("modules") or []
+        if not modules:
+            return "—"
+        parts = []
+        for m in modules:
+            mark = "●" if m.get("online") else "○"
+            parts.append(f"{mark} {m.get('label') or m.get('id')}")
+        return "  ".join(parts)
 
     def _refresh_jarvis_status_ui(self) -> None:
         if not hasattr(self, "jarvis_state_label"):
@@ -3661,14 +4238,14 @@ class MainWindow(ctk.CTk):
                 text="● ONLINE", text_color=SUCCESS
             )
             if hasattr(self, "app_header"):
-                self.app_header.jarvis_header.set_status(True, "JARVIS ONLINE")
+                self.app_header.jarvis_header.set_status(True, "SUPERVISOR ONLINE")
             self._start_jarvis_pulse()
         else:
             self.jarvis_online_label.configure(
                 text="○ OFFLINE", text_color=COLORS["muted"]
             )
             if hasattr(self, "app_header"):
-                self.app_header.jarvis_header.set_status(False, "JARVIS OFFLINE")
+                self.app_header.jarvis_header.set_status(False, "SUPERVISOR OFFLINE")
             self._stop_jarvis_pulse()
         self.jarvis_state_label.configure(text=f"Stato: {snap['state']}")
         self.jarvis_meta_label.configure(
@@ -3676,7 +4253,8 @@ class MainWindow(ctk.CTk):
                 f"Ultimo controllo: {snap['last_check']}\n"
                 f"Ultima lavorazione: {snap['last_job']}\n"
                 f"In coda: {snap['pending']}\n"
-                f"In lavorazione: {snap['current_job']}"
+                f"In lavorazione: {snap['current_job']}\n"
+                f"Moduli: {self._format_modules_line(snap)}"
             )
         )
         # Avatar: solo da refresh UI (stesso snapshot del supervisore)
@@ -3687,15 +4265,31 @@ class MainWindow(ctk.CTk):
             if panel is None:
                 continue
             try:
-                panel.update_from_snapshot(snap)
+                if hasattr(panel, "update_from_snapshot"):
+                    panel.update_from_snapshot(snap)
+                elif hasattr(panel, "set_state"):
+                    panel.set_state(
+                        str(snap.get("state") or "OFFLINE"),
+                        busy=bool(snap.get("processing")),
+                    )
             except Exception:
                 pass
         if hasattr(self, "sidebar"):
             self.sidebar.set_system_status(
-                "JARVIS attivo" if snap["active"] else "Sistema pronto"
+                "Sistema operativo in funzione"
+                if snap["active"]
+                else "Sistema pronto"
             )
         try:
+            self._refresh_assistant_rail()
+        except Exception:
+            pass
+        try:
             self._refresh_dashboard_metrics()
+        except Exception:
+            pass
+        try:
+            self._refresh_chat_status_chips()
         except Exception:
             pass
         # Aggiorna storico se job appena chiuso

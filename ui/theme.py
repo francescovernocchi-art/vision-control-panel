@@ -1,4 +1,4 @@
-"""Design tokens VIS | eniSpace Utility — solo grafica."""
+"""Design tokens — VISION Control Panel (futuristic glass HUD)."""
 
 from __future__ import annotations
 
@@ -7,28 +7,62 @@ from tkinter import ttk
 from typing import Optional
 
 # ---------------------------------------------------------------------------
-# Palette (spec)
+# Palette — void glass + cyan HUD
 # ---------------------------------------------------------------------------
-BG = "#0B1220"
-BG_SECONDARY = "#101A2B"
-SIDEBAR = "#0A1020"
-CARD = "#111C2E"
-CARD_ALT = "#162235"
-BORDER = "#FFFFFF14"  # ~rgba(255,255,255,0.08) approx for solid widgets
-BORDER_SOLID = "#1E2A3D"
-TEXT = "#F3F6FA"
-MUTED = "#9DA9BA"
-PRIMARY = "#0076C0"
-ACCENT = "#1585D8"
-SUCCESS = "#22C55E"
-WARNING = "#F59E0B"
-ERROR = "#EF4444"
+BG = "#060B14"
+BG_SECONDARY = "#0A1220"
+SIDEBAR = "#070E1A"
+CARD = "#0E1A2E"
+CARD_ALT = "#122238"
+BORDER = "#1B3A5C"
+BORDER_SOLID = "#24507A"
+BORDER_FROST = "#38BDF8"
+BORDER_DIM = "#1E3A5F"
+TEXT = "#F1F7FF"
+MUTED = "#8BA3C1"
+PRIMARY = "#1D6FE8"
+ACCENT = "#38BDF8"
+GLOW = "#67E8F9"
+GLOW_SOFT = "#0EA5E9"
+SUCCESS = "#34D399"
+WARNING = "#FBBF24"
+ERROR = "#FB7185"
 INFO = "#38BDF8"
-CONSOLE_BG = "#08101D"
-ACTIVE_NAV_BG = "#0E1A2E"
-FOCUS_BLUE = "#1585D8"
+CONSOLE_BG = "#050D18"
+ACTIVE_NAV_BG = "#0B3D91"
+ACTIVE_NAV_SOFT = "#0C2748"
+FOCUS_BLUE = "#38BDF8"
 
-# Backward-compatible COLORS dict (keys used across the codebase)
+# Glass window — SOLO backdrop acrylic (mai alpha sulla finestra:
+# testo / logo / avatar devono restare 100% opachi)
+GLASS_WINDOW_ALPHA = 1.0
+GLASS_ACRYLIC_ALPHA = 200
+GLASS_TINT = "#061018"
+
+# Proportions @1920
+SIDEBAR_WIDTH = 310
+ASSISTANT_RAIL_WIDTH = 380
+HEADER_HEIGHT = 88
+STATUS_FOOTER_HEIGHT = 42
+ASSISTANT_WIDTH = ASSISTANT_RAIL_WIDTH
+FOOTER_HEIGHT = STATUS_FOOTER_HEIGHT
+
+# Spacing / radii — HUD soft corners
+SPACE_XS = 6
+SPACE_SM = 10
+SPACE_MD = 16
+SPACE_LG = 22
+SPACE_XL = 32
+RADIUS_SM = 10
+RADIUS_MD = 14
+RADIUS_LG = 18
+BTN_HEIGHT = 44
+NAV_BTN_HEIGHT = 48
+MODULE_CARD_HEIGHT = 64
+AVATAR_DISPLAY_SIZE = 300
+
+APP_VERSION = "2.0-vision"
+
 COLORS = {
     "bg": BG,
     "bg_secondary": BG_SECONDARY,
@@ -49,25 +83,15 @@ COLORS = {
     "input": CONSOLE_BG,
     "border": BORDER_SOLID,
     "border_subtle": BORDER,
+    "border_frost": BORDER_FROST,
+    "border_dim": BORDER_DIM,
     "console": CONSOLE_BG,
     "active_nav": ACTIVE_NAV_BG,
+    "assistant": CARD,
+    "glow": GLOW,
+    "glow_soft": GLOW_SOFT,
 }
 
-# Spacing / radii
-SPACE_XS = 4
-SPACE_SM = 8
-SPACE_MD = 12
-SPACE_LG = 16
-SPACE_XL = 24
-RADIUS_SM = 6
-RADIUS_MD = 8
-RADIUS_LG = 10
-BTN_HEIGHT = 40
-SIDEBAR_WIDTH = 236
-HEADER_HEIGHT = 56
-APP_VERSION = "2.0-vision"
-
-# Font families (Inter if present, else Segoe UI)
 _FONT_FAMILY: Optional[str] = None
 
 
@@ -80,7 +104,8 @@ def font_family() -> str:
         families = set(root.tk.call("font", "families")) if root else set()
     except Exception:
         families = set()
-    for candidate in ("Inter", "Segoe UI", "Arial"):
+    # Prefer tech-forward faces when available
+    for candidate in ("Segoe UI Variable", "Segoe UI", "Bahnschrift", "Inter", "Arial"):
         if not families or candidate in families:
             _FONT_FAMILY = candidate
             break
@@ -89,18 +114,16 @@ def font_family() -> str:
     return _FONT_FAMILY
 
 
-def font(size: int = 13, weight: str = "normal") -> tuple:
-    """Tuple font for tk widgets."""
+def font(size: int = 14, weight: str = "normal") -> tuple:
     w = "bold" if weight in ("bold", "semibold") else "normal"
     return (font_family(), size, w)
 
 
-def mono_font(size: int = 12) -> tuple:
+def mono_font(size: int = 13) -> tuple:
     return ("Consolas", size)
 
 
 def apply_treeview_style(style_name: str = "Vis.Treeview") -> str:
-    """Configure a modern dark Treeview style; returns style name."""
     style = ttk.Style()
     try:
         style.theme_use("clam")
@@ -111,22 +134,16 @@ def apply_treeview_style(style_name: str = "Vis.Treeview") -> str:
         background=CARD,
         foreground=TEXT,
         fieldbackground=CARD,
-        rowheight=30,
+        rowheight=34,
         borderwidth=0,
-        font=font(11),
+        font=(font_family(), 13),
     )
+    style.map(style_name, background=[("selected", ACTIVE_NAV_SOFT)])
     style.configure(
         f"{style_name}.Heading",
         background=CARD_ALT,
-        foreground=MUTED,
+        foreground=GLOW,
+        font=(font_family(), 12, "bold"),
         relief="flat",
-        font=font(11, "bold"),
-        borderwidth=0,
     )
-    style.map(
-        style_name,
-        background=[("selected", PRIMARY), ("!selected", CARD)],
-        foreground=[("selected", TEXT)],
-    )
-    style.layout(style_name, style.layout("Treeview"))
     return style_name

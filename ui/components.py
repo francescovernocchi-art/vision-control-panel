@@ -11,6 +11,7 @@ from ui.icons import brand_logo_image, ctk_icon, jarvis_mark
 from ui.theme import (
     ACCENT,
     ACTIVE_NAV_BG,
+    ASSISTANT_RAIL_WIDTH,
     BG,
     BTN_HEIGHT,
     CARD,
@@ -18,6 +19,7 @@ from ui.theme import (
     COLORS,
     CONSOLE_BG,
     ERROR,
+    GLOW,
     HEADER_HEIGHT,
     INFO,
     MUTED,
@@ -26,6 +28,7 @@ from ui.theme import (
     RADIUS_MD,
     SIDEBAR,
     SIDEBAR_WIDTH,
+    STATUS_FOOTER_HEIGHT,
     SUCCESS,
     TEXT,
     WARNING,
@@ -120,9 +123,13 @@ class Card(ctk.CTkFrame):
         kwargs.setdefault("corner_radius", RADIUS_LG)
         kwargs.setdefault("border_width", 1)
         kwargs.setdefault(
-            "border_color", PRIMARY if accent_border else COLORS["border"]
+            "border_color", GLOW if accent_border else COLORS.get("border_frost", COLORS["border"])
         )
         super().__init__(master, **kwargs)
+        # Accent bar sinistra stile HUD
+        ctk.CTkFrame(self, fg_color=GLOW if accent_border else PRIMARY, width=3, corner_radius=1).place(
+            x=0, rely=0.12, relheight=0.76
+        )
         self.body = ctk.CTkFrame(self, fg_color="transparent")
         if title:
             head = ctk.CTkFrame(self, fg_color="transparent")
@@ -157,19 +164,22 @@ class MetricCard(ctk.CTkFrame):
         kwargs.setdefault("fg_color", CARD)
         kwargs.setdefault("corner_radius", RADIUS_LG)
         kwargs.setdefault("border_width", 1)
-        kwargs.setdefault("border_color", COLORS["border"])
+        kwargs.setdefault("border_color", COLORS.get("border_frost", COLORS["border"]))
         super().__init__(master, **kwargs)
+        ctk.CTkFrame(self, fg_color=GLOW, width=3, corner_radius=1).place(
+            x=0, rely=0.15, relheight=0.7
+        )
         ctk.CTkLabel(
-            self, text=label.upper(), font=_font(11), text_color=MUTED
-        ).pack(anchor="w", padx=14, pady=(12, 0))
+            self, text=label.upper(), font=_font(12), text_color=GLOW
+        ).pack(anchor="w", padx=18, pady=(14, 0))
         self.value_label = ctk.CTkLabel(
-            self, text=value, font=_font(26, "bold"), text_color=TEXT
+            self, text=value, font=_font(28, "bold"), text_color=TEXT
         )
-        self.value_label.pack(anchor="w", padx=14, pady=(2, 0))
+        self.value_label.pack(anchor="w", padx=16, pady=(4, 0))
         self.hint_label = ctk.CTkLabel(
-            self, text=hint, font=_font(11), text_color=MUTED
+            self, text=hint, font=_font(12), text_color=MUTED
         )
-        self.hint_label.pack(anchor="w", padx=14, pady=(0, 12))
+        self.hint_label.pack(anchor="w", padx=16, pady=(0, 14))
 
     def set_value(self, value: str, hint: str | None = None) -> None:
         self.value_label.configure(text=value)
@@ -297,7 +307,7 @@ class JarvisSupervisorCard(ctk.CTkFrame):
         titles.pack(side="left", fill="x", expand=True)
         ctk.CTkLabel(
             titles,
-            text="JARVIS SUPERVISORE",
+            text="VISION SUPERVISOR",
             font=_font(14, "bold"),
             text_color=TEXT,
         ).pack(anchor="w")
@@ -314,7 +324,7 @@ class JarvisSupervisorCard(ctk.CTkFrame):
         self.meta.pack(fill="x", padx=14, pady=(4, 8))
         if on_open:
             SecondaryButton(
-                self, text="Apri JARVIS", height=32, width=120, command=on_open
+                self, text="Apri Supervisor", height=32, width=140, command=on_open
             ).pack(anchor="e", padx=14, pady=(0, 12))
 
 
@@ -355,7 +365,7 @@ class AppHeader(ctk.CTkFrame):
         )
         self.session_label.pack(side="left", padx=(0, 12))
 
-        self.jarvis_header = StatusIndicator(right, label="JARVIS OFFLINE")
+        self.jarvis_header = StatusIndicator(right, label="SUPERVISOR OFFLINE")
         self.jarvis_header.pack(side="left", padx=(0, 12))
 
         self.user_label = ctk.CTkLabel(
@@ -402,23 +412,18 @@ class AppHeader(ctk.CTkFrame):
 
 
 class Sidebar(ctk.CTkFrame):
-    # Layout modulare VIS•ION (eniSpace resta area operativa esistente)
+    # Nav principale allineata al UI pack (moduli operativi restano raggiungibili)
     ITEMS = [
         ("dashboard", "Dashboard", "dashboard"),
-        ("assistente", "Assistente", "jarvis"),
         ("moduli", "Moduli", "docs"),
-        ("enispace", "  eniSpace", "search"),
-        ("coin_transport", "  Trasporto Monete", "mail"),
+        ("enispace", "EniSpace", "search"),
+        ("coin_transport", "Trasporto Monete", "mail"),
         ("lavorazioni", "Lavorazioni", "history"),
-        ("attivita", "Attività", "print"),
-        ("notifiche", "Notifiche", "mail"),
-        ("jarvis", "JARVIS (eniSpace)", "jarvis"),
-        ("ricerca", "Ricerca", "search"),
         ("mail", "Mail", "mail"),
-        ("documenti", "Documenti", "docs"),
+        ("jarvis", "Supervisor", "jarvis"),
+        ("impostazioni", "Impostazioni", "settings"),
         ("coda", "Coda stampa", "print"),
         ("storico", "Storico", "history"),
-        ("impostazioni", "Impostazioni", "settings"),
     ]
 
     def __init__(
@@ -454,21 +459,21 @@ class Sidebar(ctk.CTkFrame):
             titles = ctk.CTkFrame(logo_row, fg_color="transparent")
             titles.pack(side="left", fill="x", expand=True)
             ctk.CTkLabel(
-                titles, text="VIS•ION", font=_font(18, "bold"), text_color=PRIMARY
+                titles, text="VISION", font=_font(18, "bold"), text_color=PRIMARY
             ).pack(anchor="w")
             ctk.CTkLabel(
                 titles,
-                text="Intelligent Operations",
+                text="Control Panel",
                 font=_font(11),
                 text_color=MUTED,
             ).pack(anchor="w")
         else:
             ctk.CTkLabel(
-                brand, text="VIS•ION", font=_font(22, "bold"), text_color=PRIMARY
+                brand, text="VISION", font=_font(22, "bold"), text_color=PRIMARY
             ).pack(anchor="w")
             ctk.CTkLabel(
                 brand,
-                text="Intelligent Operations",
+                text="Control Panel",
                 font=_font(12),
                 text_color=MUTED,
             ).pack(anchor="w")
@@ -509,12 +514,15 @@ class Sidebar(ctk.CTkFrame):
         footer = ctk.CTkFrame(self, fg_color="transparent")
         footer.pack(fill="x", side="bottom", padx=14, pady=14)
         self.footer_status = ctk.CTkLabel(
-            footer, text="Sistema pronto", font=_font(10), text_color=MUTED
+            footer,
+            text="Sistema operativo in funzione",
+            font=_font(10),
+            text_color=SUCCESS,
         )
         self.footer_status.pack(anchor="w")
         ctk.CTkLabel(
             footer,
-            text=f"v{version}",
+            text=f"VISION v{version}",
             font=_font(10),
             text_color=MUTED,
         ).pack(anchor="w")
@@ -541,6 +549,154 @@ class Sidebar(ctk.CTkFrame):
         self.footer_status.configure(text=text)
 
 
+class AssistantRail(ctk.CTkFrame):
+    """Pannello destro fisso — VISION assistant + stato sistema."""
+
+    def __init__(
+        self,
+        master,
+        *,
+        avatar_factory: Optional[Callable] = None,
+        on_console: Optional[Callable] = None,
+        **kwargs,
+    ):
+        kwargs.setdefault("fg_color", CARD)
+        kwargs.setdefault("width", ASSISTANT_RAIL_WIDTH)
+        kwargs.setdefault("corner_radius", 0)
+        kwargs.setdefault("border_width", 1)
+        kwargs.setdefault("border_color", COLORS["border"])
+        super().__init__(master, **kwargs)
+        self.pack_propagate(False)
+
+        head = ctk.CTkFrame(self, fg_color="transparent")
+        head.pack(fill="x", padx=14, pady=(16, 8))
+        ctk.CTkLabel(
+            head,
+            text="VISION",
+            font=_font(14, "bold"),
+            text_color=PRIMARY,
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            head,
+            text="Il tuo assistente",
+            font=_font(12),
+            text_color=MUTED,
+        ).pack(anchor="w")
+
+        self.avatar_host = ctk.CTkFrame(self, fg_color=CARD_ALT, corner_radius=RADIUS_LG)
+        self.avatar_host.pack(fill="x", padx=12, pady=(4, 8))
+        self.avatar = None
+        if avatar_factory is not None:
+            try:
+                self.avatar = avatar_factory(self.avatar_host)
+                if self.avatar is not None:
+                    self.avatar.pack(fill="x", padx=4, pady=4)
+            except Exception:
+                self.avatar = None
+        if self.avatar is None:
+            ctk.CTkLabel(
+                self.avatar_host,
+                text="VISION",
+                font=_font(22, "bold"),
+                text_color=PRIMARY,
+            ).pack(pady=24)
+
+        self.intro = ctk.CTkLabel(
+            self,
+            text="Sono VISION. Il tuo assistente operativo.",
+            font=_font(12),
+            text_color=TEXT,
+            wraplength=ASSISTANT_RAIL_WIDTH - 36,
+            justify="left",
+        )
+        self.intro.pack(anchor="w", padx=14, pady=(0, 10))
+
+        status_card = ctk.CTkFrame(
+            self,
+            fg_color=CARD_ALT,
+            corner_radius=RADIUS_MD,
+            border_width=1,
+            border_color=COLORS["border"],
+        )
+        status_card.pack(fill="x", padx=12, pady=(0, 8))
+        ctk.CTkLabel(
+            status_card,
+            text="STATO SISTEMA",
+            font=_font(11, "bold"),
+            text_color=MUTED,
+        ).pack(anchor="w", padx=12, pady=(10, 6))
+        self._status_labels: dict[str, ctk.CTkLabel] = {}
+        for key, title in (
+            ("supervisor", "Supervisor"),
+            ("enispace", "EniSpace"),
+            ("mail", "Mail"),
+            ("remote", "Remote"),
+            ("jobs", "Lavorazioni"),
+        ):
+            row = ctk.CTkFrame(status_card, fg_color="transparent")
+            row.pack(fill="x", padx=12, pady=2)
+            ctk.CTkLabel(row, text=title, font=_font(12), text_color=MUTED).pack(
+                side="left"
+            )
+            lab = ctk.CTkLabel(row, text="—", font=_font(12, "bold"), text_color=TEXT)
+            lab.pack(side="right")
+            self._status_labels[key] = lab
+        ctk.CTkFrame(status_card, fg_color="transparent", height=8).pack()
+
+        if on_console:
+            SecondaryButton(
+                self, text="Apri Console", height=36, command=on_console
+            ).pack(fill="x", padx=12, pady=(8, 16), side="bottom")
+
+    def set_status(self, key: str, value: str, *, ok: Optional[bool] = None) -> None:
+        lab = self._status_labels.get(key)
+        if lab is None:
+            return
+        color = TEXT
+        if ok is True:
+            color = SUCCESS
+        elif ok is False:
+            color = ERROR
+        lab.configure(text=value, text_color=color)
+
+
+class StatusFooter(ctk.CTkFrame):
+    """Footer globale versione / modulo / connessione."""
+
+    def __init__(self, master, *, version: str = "2.0-vision", **kwargs):
+        kwargs.setdefault("fg_color", CARD)
+        kwargs.setdefault("height", STATUS_FOOTER_HEIGHT)
+        kwargs.setdefault("corner_radius", 0)
+        super().__init__(master, **kwargs)
+        self.pack_propagate(False)
+        self.left = ctk.CTkLabel(
+            self,
+            text=f"VISION Control Panel v{version}",
+            font=_font(11),
+            text_color=MUTED,
+        )
+        self.left.pack(side="left", padx=14)
+        self.center = ctk.CTkLabel(
+            self, text="Modulo: Dashboard", font=_font(11), text_color=MUTED
+        )
+        self.center.pack(side="left", padx=20)
+        self.right = ctk.CTkLabel(
+            self, text="Agent · —", font=_font(11), text_color=MUTED
+        )
+        self.right.pack(side="right", padx=14)
+
+    def set_module(self, name: str) -> None:
+        self.center.configure(text=f"Modulo: {name}")
+
+    def set_connection(self, text: str, *, ok: Optional[bool] = None) -> None:
+        color = MUTED
+        if ok is True:
+            color = SUCCESS
+        elif ok is False:
+            color = WARNING
+        self.right.configure(text=text, text_color=color)
+
+
 class PageNavigator:
     """Compat layer for legacy self.tabs.set / self.tabs.get."""
 
@@ -548,6 +704,8 @@ class PageNavigator:
         "RICERCA": "ricerca",
         "CODA STAMPA": "coda",
         "JARVIS": "jarvis",
+        "VISION Supervisor": "jarvis",
+        "SUPERVISOR": "jarvis",
         "REGISTRO": "mail",
         "CRONOLOGIA": "storico",
     }

@@ -98,6 +98,13 @@ class VisionRemoteAgent:
     def is_running(self) -> bool:
         return self._running
 
+    @property
+    def last_error(self) -> str:
+        backend = self.backend
+        if backend is None:
+            return ""
+        return str(getattr(backend, "last_error", "") or getattr(backend, "_last_error", "") or "")
+
     def add_status_listener(self, cb: StatusListener) -> None:
         if cb not in self._listeners:
             self._listeners.append(cb)
@@ -110,6 +117,21 @@ class VisionRemoteAgent:
                 cb(status)
             except Exception:
                 pass
+
+    def probe_connection(self) -> tuple[bool, str]:
+        """UI/diagnostics: verifica outbound Agent → backend."""
+        self.config = RemoteConfig.load()
+        backend = self.backend
+        if self.config.mode == "mock":
+            return True, "Modalità mock — nessun cloud richiesto"
+        probe = getattr(backend, "probe_agent_rpc", None)
+        if callable(probe):
+            return probe()
+        try:
+            backend.connect()
+            return True, "Backend raggiungibile"
+        except Exception as exc:  # noqa: BLE001
+            return False, str(exc)[:240]
 
     # ------------------------------------------------------------------ lifecycle
     def start(self) -> bool:
@@ -204,12 +226,20 @@ class VisionRemoteAgent:
                     break
             except Exception as exc:  # noqa: BLE001
                 connected = False
+                err = str(exc)
+                be_err = str(
+                    getattr(self.backend, "last_error", "")
+                    or getattr(self.backend, "_last_error", "")
+                    or ""
+                )
+                if be_err and len(be_err) > len(err):
+                    err = be_err
                 self._set_status(DeviceStatus.DEGRADED)
-                remote_log.warning("Remote loop error: %s", exc)
+                remote_log.warning("Remote loop error: %s", err)
                 try:
                     self.backend.create_notification(
                         event_type="DEVICE_DEGRADED",
-                        message=str(exc),
+                        message=err[:200],
                         device_id=self.config.device_id,
                     )
                 except Exception:

@@ -31,7 +31,7 @@ class CommandDispatcher:
     def dispatch(self, command: RemoteCommand) -> dict[str, Any]:
         ctype = command.command_type
 
-        # Policy di fase: solo GET_STATUS dai comandi remoti (non path locali)
+        # Policy di fase: thin channel (GET_STATUS + wake/deactivate Supervisor)
         if not is_remote_command_allowed(
             ctype, policy=self.remote_execution_policy
         ):
@@ -45,7 +45,8 @@ class CommandDispatcher:
                 "code": "REMOTE_OPERATION_NOT_ENABLED",
                 "message": (
                     f"{ctype} non autorizzato in modalità "
-                    f"{self.remote_execution_policy} (solo GET_STATUS remoto)"
+                    f"{self.remote_execution_policy} "
+                    "(canale sottile: GET_STATUS / WAKE_SUPERVISOR / DEACTIVATE_SUPERVISOR)"
                 ),
             }
 
@@ -63,6 +64,10 @@ class CommandDispatcher:
             }
         if ctype == CommandType.GET_STATUS:
             return self._get_status()
+        if ctype == CommandType.WAKE_SUPERVISOR:
+            return self._wake_supervisor()
+        if ctype == CommandType.DEACTIVATE_SUPERVISOR:
+            return self._deactivate_supervisor()
         if ctype == CommandType.CHECK_ENISPACE_MAIL:
             return self._check_enispace_mail(command)
         if ctype == CommandType.RETRY_JOB:
@@ -75,6 +80,57 @@ class CommandDispatcher:
 
     def _get_status(self) -> dict[str, Any]:
         return self.status_service.build_status()
+
+    def _jarvis(self) -> Any:
+        mod = self.core.modules.get("enispace")
+        return getattr(mod, "jarvis", None) if mod is not None else None
+
+    def _persist_jarvis_enabled(self, jarvis: Any, enabled: bool) -> None:
+        db = getattr(jarvis, "db", None)
+        if db is None or not hasattr(db, "get_settings"):
+            return
+        try:
+            settings = db.get_settings()
+            settings.jarvis_enabled = bool(enabled)
+            db.save_settings(settings)
+        except Exception as exc:  # noqa: BLE001
+            remote_log.warning("persist jarvis_enabled failed: %s", exc)
+
+    def _wake_supervisor(self) -> dict[str, Any]:
+        jarvis = self._jarvis()
+        if jarvis is None:
+            return {
+                "ok": False,
+                "code": "SUPERVISOR_UNAVAILABLE",
+                "message": "JarvisSupervisor non collegato al Core",
+            }
+        self._persist_jarvis_enabled(jarvis, True)
+        try:
+            jarvis.start()
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "code": "WAKE_FAILED", "message": str(exc)}
+        remote_log.info("WAKE_SUPERVISOR executed")
+        return {"ok": True, "supervisor": "ONLINE", "command": "WAKE_SUPERVISOR"}
+
+    def _deactivate_supervisor(self) -> dict[str, Any]:
+        jarvis = self._jarvis()
+        if jarvis is None:
+            return {
+                "ok": False,
+                "code": "SUPERVISOR_UNAVAILABLE",
+                "message": "JarvisSupervisor non collegato al Core",
+            }
+        self._persist_jarvis_enabled(jarvis, False)
+        try:
+            jarvis.stop()
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "code": "DEACTIVATE_FAILED", "message": str(exc)}
+        remote_log.info("DEACTIVATE_SUPERVISOR executed")
+        return {
+            "ok": True,
+            "supervisor": "OFFLINE",
+            "command": "DEACTIVATE_SUPERVISOR",
+        }
 
     def _check_enispace_mail(self, command: RemoteCommand) -> dict[str, Any]:
         """Delega al modulo eniSpace — nessuna logica eniSpace qui."""

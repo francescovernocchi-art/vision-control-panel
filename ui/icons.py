@@ -3,20 +3,29 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Optional, Tuple
 
 from PIL import Image, ImageDraw, ImageTk
 
 import customtkinter as ctk
 
+from ui.svg_brand import ctk_image_from_rgba, load_brand_rgba
 from ui.theme import MUTED, PRIMARY
-from utils.paths import brand_logo_ico, brand_logo_png
+from utils.paths import (
+    brand_lockup_png,
+    brand_logo_ico,
+    brand_logo_png,
+    brand_title_lockup_png,
+)
+
 
 
 Color = Tuple[int, int, int, int]
 
 # Keep PhotoImage refs alive for wm_iconphoto
 _ICON_PHOTO_REFS: list[Any] = []
+_BRAND_IMAGE_REFS: list[Any] = []
 
 
 def _hex(h: str, alpha: int = 255) -> Color:
@@ -86,6 +95,19 @@ def _draw_icon(name: str, size: int, color_hex: str) -> Image.Image:
             x1 = cx + math.cos(rad) * (size * 0.42)
             y1 = cy + math.sin(rad) * (size * 0.42)
             _line(d, [(x0, y0), (x1, y1)], c, 3)
+    elif name == "devices":
+        d.rounded_rectangle([m, m + 4, s, s - 4], radius=3, outline=c, width=2)
+        d.rectangle([size * 0.38, s - 4, size * 0.62, s], fill=c)
+    elif name == "approvals":
+        d.ellipse([m, m, s, s], outline=c, width=2)
+        _line(d, [(m + 4, size * 0.52), (size * 0.42, s - 6), (s - 4, m + 6)], c, 2)
+    elif name == "support":
+        d.ellipse([m, m, s, s], outline=c, width=2)
+        d.arc([m + 6, m + 6, s - 6, size * 0.7], start=200, end=340, fill=c, width=2)
+        d.ellipse([size * 0.45, size * 0.68, size * 0.55, size * 0.78], fill=c)
+    elif name == "log":
+        for i, y in enumerate((0.28, 0.48, 0.68)):
+            _line(d, [(m + 2, size * y), (s - 2, size * y)], c, 2)
     elif name == "user":
         d.ellipse([size * 0.32, m, size * 0.68, size * 0.48], outline=c, width=2)
         d.arc([m + 2, size * 0.42, s - 2, s + 4], start=200, end=340, fill=c, width=2)
@@ -123,25 +145,36 @@ def jarvis_mark(size: int = 36, color: str = PRIMARY) -> ctk.CTkImage:
 
 
 def _load_brand_rgba() -> Optional[Image.Image]:
-    path = brand_logo_png()
-    if not path.is_file():
+    # PNG ufficiale prima: SVG semplificato non sostituisce il metallo originale
+    return load_brand_rgba(
+        svg=None,
+        png_fallback=brand_logo_png(),
+        dpi=220,
+    )
+
+
+def _ctk_from_png(png: Path, *, height: int) -> Optional[ctk.CTkImage]:
+    src = load_brand_rgba(svg=None, png_fallback=png, dpi=192)
+    if src is None:
         return None
-    try:
-        return Image.open(path).convert("RGBA")
-    except Exception:
-        return None
+    img = ctk_image_from_rgba(src, height=height)
+    _BRAND_IMAGE_REFS.append(img)
+    return img
 
 
 def brand_logo_image(height: int = 56) -> Optional[ctk.CTkImage]:
-    """Logo ufficiale VIS ridimensionato preservando proporzioni (sidebar ~48–64px)."""
-    src = _load_brand_rgba()
-    if src is None:
-        return None
-    h = max(24, int(height))
-    w = max(24, int(round(src.width * (h / src.height))))
-    # 2x source for crisp CTkImage scaling
-    hi = src.resize((w * 2, h * 2), Image.Resampling.LANCZOS)
-    return ctk.CTkImage(light_image=hi, dark_image=hi, size=(w, h))
+    """Logo aquila VISION (PNG ufficiale, sfondo trasparente, contenuto opaco)."""
+    return _ctk_from_png(brand_logo_png(), height=height)
+
+
+def brand_title_lockup_image(height: int = 72) -> Optional[ctk.CTkImage]:
+    """Titolo VIS•ION metallico ufficiale (non SVG semplificato)."""
+    return _ctk_from_png(brand_title_lockup_png(), height=height)
+
+
+def brand_lockup_image(height: int = 120) -> Optional[ctk.CTkImage]:
+    """Aquila + titolo ufficiali."""
+    return _ctk_from_png(brand_lockup_png(), height=height)
 
 
 def apply_app_icon(window: Any) -> bool:
