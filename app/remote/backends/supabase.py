@@ -7,6 +7,7 @@ Auth Agent:
   SUPABASE_URL + SUPABASE_ANON_KEY + VISION_AGENT_TOKEN.
   NON richiede service_role nel processo Agent.
   VISION_AGENT_TOKEN NON è una chiave nativa Supabase.
+  Live Lovable RPC arg name: p_token (plaintext token).
 
 Canale sottile (Control Panel ↔ Agent):
   heartbeat + GET_STATUS / WAKE_SUPERVISOR / DEACTIVATE_SUPERVISOR.
@@ -117,16 +118,16 @@ class SupabaseRemoteBackend:
             return False, msg
 
     def heartbeat(self, identity: DeviceIdentity) -> None:
+        # Lovable/PWA live RPC uses p_token (not p_agent_token) and a shorter
+        # signature — omit p_current_job_id / p_timestamp to avoid PGRST202.
         payload = {
             "p_device_id": identity.device_id,
-            "p_agent_token": self._agent_token,
+            "p_token": self._agent_token,
             "p_status": identity.status,
             "p_agent_version": identity.agent_version,
             "p_vision_version": identity.vision_version,
             "p_platform_version": getattr(identity, "platform_version", "") or "",
-            "p_current_job_id": identity.current_job_id or "",
             "p_modules": identity.modules or [],
-            "p_timestamp": identity.last_seen_at or now_iso(),
         }
         try:
             self._rpc("agent_heartbeat", payload)
@@ -158,6 +159,11 @@ class SupabaseRemoteBackend:
         if "agent_heartbeat" in lower and (
             "pgrst202" in lower or "could not find the function" in lower or "404" in lower
         ):
+            if "p_agent_token" in lower and "p_token" not in lower:
+                return (
+                    "RPC agent_heartbeat: firma non allineata "
+                    "(client deve usare p_token, non p_agent_token)"
+                )
             return (
                 "RPC agent_heartbeat assente su Supabase - "
                 "applicare migration thin channel "
@@ -186,7 +192,7 @@ class SupabaseRemoteBackend:
             "agent_fetch_pending_commands",
             {
                 "p_device_id": device_id,
-                "p_agent_token": self._agent_token,
+                "p_token": self._agent_token,
                 "p_limit": 10,
             },
         )
@@ -247,20 +253,20 @@ class SupabaseRemoteBackend:
         started_at: Optional[str] = None,
         finished_at: Optional[str] = None,
     ) -> None:
-        self._rpc(
-            "agent_update_command",
-            {
-                "p_device_id": command.target_device_id,
-                "p_agent_token": self._agent_token,
-                "p_command_id": command.command_id,
-                "p_status": status,
-                "p_result": result,
-                "p_error": error,
-                "p_acknowledged_at": acknowledged_at,
-                "p_started_at": started_at,
-                "p_finished_at": finished_at,
-            },
-        )
+        # Live Lovable signature: p_token + status/result/error only
+        # (no p_acknowledged_at / p_started_at / p_finished_at).
+        _ = (acknowledged_at, started_at, finished_at)
+        payload: dict[str, Any] = {
+            "p_device_id": command.target_device_id,
+            "p_token": self._agent_token,
+            "p_command_id": command.command_id,
+            "p_status": status,
+        }
+        if result is not None:
+            payload["p_result"] = result
+        if error is not None:
+            payload["p_error"] = error
+        self._rpc("agent_update_command", payload)
 
     def _rpc(self, fn: str, body: dict[str, Any]) -> Any:
         return self._rest(
@@ -327,9 +333,11 @@ class SupabaseRemoteBackend:
         if not isinstance(params, dict):
             params = {}
         return RemoteCommand(
-            command_id=cid,
+            command_id=cid or str(row.get("id") or ""),
             command_type=str(row.get("command_type") or ""),
-            target_device_id=str(row.get("target_device_id") or ""),
+            target_device_id=str(
+                row.get("target_device_id") or row.get("device_id") or ""
+            ),
             status=str(row.get("status") or "PENDING"),
             params=params,
             created_at=str(row.get("created_at") or row.get("requested_at") or ""),
