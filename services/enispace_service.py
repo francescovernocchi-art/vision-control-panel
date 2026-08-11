@@ -64,6 +64,8 @@ from utils.paths import (
     ENISPACE_MARKETPLACE_URL,
     ENISPACE_MYHOME_URL,
     ENISPACE_ORDINI_URL,
+    ENISPACE_PROXY_LOGIN_URL,
+    ENISPACE_STARTUP_URL,
     is_valid_marketplace_host,
     marketplace_dashboard_url_from,
 )
@@ -83,6 +85,8 @@ class Selectors:
 
     # URL home eniSpace (verificato)
     BASE_URL: str = ENISPACE_HOME_URL
+    # Ingresso SSO (barra preferiti Chrome)
+    PROXY_LOGIN_URL: str = ENISPACE_PROXY_LOGIN_URL
     MYHOME_URL: str = ENISPACE_MYHOME_URL
     ORDINI_URL: str = ENISPACE_ORDINI_URL
 
@@ -248,6 +252,13 @@ class EniSpaceService:
             user_data_dir=prev.user_data_dir,
             downloads_path=prev.downloads_path,
             channel=prev.channel or "chrome",
+            use_system_chrome_profile=bool(
+                getattr(prev, "use_system_chrome_profile", True)
+            ),
+            chrome_profile_directory=getattr(prev, "chrome_profile_directory", None)
+            or "Default",
+            executable_path=getattr(prev, "executable_path", None),
+            startup_url=getattr(prev, "startup_url", None) or ENISPACE_STARTUP_URL,
         )
 
     # ------------------------------------------------------------------ session
@@ -327,7 +338,15 @@ class EniSpaceService:
             self.browser.enable_interactive()
             return True
 
-        url = self.base_url or Selectors.BASE_URL
+        url = (
+            self.base_url
+            or Selectors.BASE_URL
+            or ENISPACE_HOME_URL
+            or Selectors.PROXY_LOGIN_URL
+            or ENISPACE_PROXY_LOGIN_URL
+            or Selectors.MYHOME_URL
+            or ENISPACE_MYHOME_URL
+        )
         if not url:
             if allow_manual:
                 logger.info(
@@ -352,42 +371,62 @@ class EniSpaceService:
                 return True
             raise SelectorsNotConfiguredError("BASE_URL")
 
-        try:
-            self._debug_action("goto_login", url)
-            self.browser.goto(url)
-        except Exception as exc:
-            err = str(exc).lower()
-            logger.error("Apertura eniSpace fallita: %s", exc)
-            if "timeout" in err:
-                raise TimeoutErrorEni(
-                    "Timeout durante la connessione a eniSpace.",
+        # Se il browser è già su myhome/private dopo startup, non rifare goto.
+        current = self.browser.current_url() or ""
+        if self._url_looks_authenticated(current) or self._is_identity_provider_url(
+            current
+        ):
+            logger.info("Browser già su sessione/IdP: %s", current[:120])
+        else:
+            try:
+                self._debug_action("goto_login", url)
+                self.browser.goto(url)
+            except Exception as exc:
+                err = str(exc).lower()
+                logger.error("Apertura eniSpace fallita: %s", exc)
+                if "timeout" in err:
+                    raise TimeoutErrorEni(
+                        "Timeout durante la connessione a eniSpace.",
+                        technical=str(exc),
+                    ) from exc
+                if "net::" in err or "network" in err or "err_" in err:
+                    raise NetworkError(
+                        "Assenza connessione internet o portale non raggiungibile.",
+                        technical=str(exc),
+                    ) from exc
+                if any(
+                    k in err
+                    for k in (
+                        "destroyed",
+                        "closed",
+                        "aborted",
+                        "interrupted",
+                        "detached",
+                    )
+                ):
+                    raise BrowserError(
+                        "Navigazione interrotta (scheda Marketplace/popup ancora attiva).\n"
+                        "Chiudere le schede non necessarie oppure riprovare "
+                        "«Test accesso» / «Registra navigazione».",
+                        technical=str(exc),
+                    ) from exc
+                raise PortalUnreachableError(
+                    "Portale eniSpace non raggiungibile.\n"
+                    "Se hai appena usato il Marketplace, riprova: "
+                    "verrà aperta una nuova scheda eniSpace.",
                     technical=str(exc),
                 ) from exc
-            if "net::" in err or "network" in err or "err_" in err:
-                raise NetworkError(
-                    "Assenza connessione internet o portale non raggiungibile.",
-                    technical=str(exc),
-                ) from exc
-            if any(
-                k in err
-                for k in ("destroyed", "closed", "aborted", "interrupted", "detached")
-            ):
-                raise BrowserError(
-                    "Navigazione interrotta (scheda Marketplace/popup ancora attiva).\n"
-                    "Chiudere le schede non necessarie oppure riprovare "
-                    "«Test accesso» / «Registra navigazione».",
-                    technical=str(exc),
-                ) from exc
-            raise PortalUnreachableError(
-                "Portale eniSpace non raggiungibile.\n"
-                "Se hai appena usato il Marketplace, riprova: "
-                "verrà aperta una nuova scheda eniSpace.",
-                technical=str(exc),
-            ) from exc
 
-        if self._manual_login_probe():
-            logger.info("Sessione valida dopo apertura home eniSpace.")
+        # Se siamo già su myhome privata dopo startup, la sessione è ok.
+        if self._enispace_private_online() or self._manual_login_probe():
+            logger.info("Sessione valida su area privata / portale.")
             self._session_active = True
+            self.browser.enable_interactive()
+            return True
+
+        # home.page è pubblica: non basta. Prova area privata (myhome).
+        if self._probe_private_session():
+            logger.info("Sessione valida dopo verifica area privata.")
             self.browser.enable_interactive()
             return True
 
@@ -427,11 +466,11 @@ class EniSpaceService:
             "ATTESA LOGIN eniSpace: completare l'accesso in Chrome "
             "(MFA/OTP consentiti). La sync non è bloccata — attendere..."
         )
-        ok = self.browser.wait_for_manual_login(
-            is_logged_in=self._manual_login_probe,
+        ok = self._wait_for_sso_if_needed(
             max_wait_seconds=600,
+            context="eniSpace",
+            require_enispace_private=True,
         )
-        self._session_active = ok
         if not ok:
             raise LoginFailedError(
                 "Sessione eniSpace scaduta o login non completato.\n"
@@ -445,37 +484,428 @@ class EniSpaceService:
         """Euristica URL: sessione attiva su eniSpace o Marketplace (qualsiasi scheda)."""
         return self.browser.run(self._looks_like_authenticated_portal_impl)
 
-    def _url_looks_authenticated(self, current: str) -> bool:
-        current_l = (current or "").lower()
+    @staticmethod
+    def _is_identity_provider_url(url: str) -> bool:
+        current_l = (url or "").lower()
         if not current_l or current_l == "about:blank":
             return False
-
         idp_hints = (
             "login.microsoftonline.com",
+            "login.microsoft.com",
+            "login.eni.com",
             "/saml2",
             "adfs",
             "oauth",
             "signin",
             "sts.",
             "authentication.eu10.hana.ondemand.com/login",
+            "proxylogin",
         )
-        if any(h in current_l for h in idp_hints):
+        return any(h in current_l for h in idp_hints)
+
+    def _url_looks_authenticated(self, current: str) -> bool:
+        """
+        Sessione reale: area privata eniSpace o Marketplace già aperto.
+        La home pubblica (home.page) NON basta: è raggiungibile senza SSO.
+        """
+        current_l = (current or "").lower()
+        if not current_l or current_l == "about:blank":
+            return False
+
+        if self._is_identity_provider_url(current_l):
             return False
 
         # Qualsiasi host Marketplace BTP/ABAP (UUID può cambiare)
         if self._is_marketplace_url(current):
             return True
 
-        # Area privata / home eniSpace
+        # Solo area privata eniSpace (myhome / private pages)
         if "enispace.eni.com" in current_l:
-            if "/private/" in current_l or "myhome.page" in current_l:
-                return True
-            if "home.page" in current_l and "proxylogin" not in current_l:
-                return True
             if "proxylogin" in current_l or "/login" in current_l:
                 return False
+            if "/private/" in current_l or "myhome.page" in current_l:
+                return True
+            # home.page e altre pagine pubbliche: non autenticate
+            return False
+
+        return False
+
+    def _resolve_login_username(self) -> str:
+        """Username portale da keyring o settings (es. anna.boccuni@guest.eni.com)."""
+        try:
+            user = (self.credentials.get_username() or "").strip()
+            if user:
+                return user
+        except Exception:
+            pass
+        try:
+            creds = self.credentials.load()
+            if creds and (creds.username or "").strip():
+                return creds.username.strip()
+        except Exception:
+            pass
+        if self.db is not None:
+            try:
+                user = (self.db.get_settings().username or "").strip()
+                if user:
+                    return user
+            except Exception:
+                pass
+        return ""
+
+    def _resolve_login_password(self) -> str:
+        try:
+            creds = self.credentials.load()
+            if creds and creds.password:
+                return creds.password
+        except Exception:
+            pass
+        return ""
+
+    def _enispace_private_online(self) -> bool:
+        """True solo se esiste una scheda eniSpace in area /private/."""
+        return self.browser.run(self._enispace_private_online_impl)
+
+    def _enispace_private_online_impl(self) -> bool:
+        pages = []
+        try:
+            if self.browser.context:
+                pages = list(self.browser.context.pages)
+        except Exception:
+            pages = []
+        if self.browser.page is not None and self.browser.page not in pages:
+            pages.insert(0, self.browser.page)
+        for page in pages:
+            try:
+                current = page.url or ""
+            except Exception:
+                continue
+            current_l = current.lower()
+            if self._is_identity_provider_url(current_l):
+                continue
+            if "enispace.eni.com" not in current_l:
+                continue
+            if "/private/" in current_l or "myhome.page" in current_l:
+                try:
+                    self.browser.focus_page(page)
+                except Exception:
+                    pass
+                return True
+        return False
+
+    def _assist_sso_login_once(self) -> None:
+        """Su Microsoft/ADFS: inserisce username salvato e clicca Avanti (rate-limited)."""
+        import time
+
+        now = time.monotonic()
+        if now - getattr(self, "_sso_assist_ts", 0.0) < 2.5:
+            return
+        self._sso_assist_ts = now
+        username = self._resolve_login_username()
+        if not username:
+            return
+        try:
+            self.browser.run(self._assist_sso_login_impl, username)
+        except Exception as exc:
+            logger.debug("SSO assist: %s", exc)
+
+    def _assist_sso_login_impl(self, username: str) -> None:
+        pages = []
+        try:
+            if self.browser.context:
+                pages = list(self.browser.context.pages)
+        except Exception:
+            pages = []
+        if self.browser.page is not None and self.browser.page not in pages:
+            pages.insert(0, self.browser.page)
+
+        for page in pages:
+            try:
+                url = (page.url or "").lower()
+            except Exception:
+                continue
+            if not self._is_identity_provider_url(url):
+                continue
+            try:
+                if "login.microsoftonline.com" in url or "login.microsoft.com" in url:
+                    self._assist_microsoft_online_page(page, username)
+                elif "login.eni.com" in url or "adfs" in url:
+                    self._assist_eni_adfs_page(page, username)
+            except Exception as exc:
+                logger.debug("SSO assist page (%s): %s", url[:60], exc)
+
+    def _assist_microsoft_online_page(self, page, username: str) -> None:
+        """Compila email su Entra ID e clicca Avanti / seleziona account."""
+        # 1) Account picker: clicca tile con l'email
+        try:
+            tile = page.locator(f'[data-test-id="{username}"]').first
+            if tile.count() and tile.is_visible(timeout=800):
+                logger.info("SSO assist: selezione account %s", username)
+                tile.click(timeout=3000)
+                return
+        except Exception:
+            pass
+        try:
+            acc = page.get_by_text(username, exact=False).first
+            if acc.count() and acc.is_visible(timeout=800):
+                # Evita click su titoli generici: preferisci riga account
+                logger.info("SSO assist: click account visibile %s", username)
+                acc.click(timeout=3000)
+                return
+        except Exception:
+            pass
+
+        # 2) Campo email Microsoft (#i0116 / loginfmt)
+        email_selectors = (
+            "#i0116",
+            'input[name="loginfmt"]',
+            'input[type="email"]',
+            'input[name="username"]',
+        )
+        filled = False
+        for sel in email_selectors:
+            try:
+                el = page.locator(sel).first
+                if not el.count() or not el.is_visible(timeout=600):
+                    continue
+                current_val = ""
+                try:
+                    current_val = (el.input_value(timeout=500) or "").strip()
+                except Exception:
+                    current_val = ""
+                if current_val.lower() != username.lower():
+                    el.click(timeout=2000)
+                    el.fill("")
+                    el.fill(username)
+                    logger.info("SSO assist: email inserita su Microsoft (%s)", username)
+                filled = True
+                break
+            except Exception:
+                continue
+        if not filled:
+            return
+
+        # 3) Avanti / Next
+        for sel in ("#idSIButton9", 'input[type="submit"]', 'button[type="submit"]'):
+            try:
+                btn = page.locator(sel).first
+                if btn.count() and btn.is_visible(timeout=600):
+                    btn.click(timeout=3000)
+                    logger.info("SSO assist: click Avanti su Microsoft")
+                    return
+            except Exception:
+                continue
+        try:
+            nxt = page.get_by_role("button", name="Next").first
+            if nxt.count() and nxt.is_visible(timeout=600):
+                nxt.click(timeout=3000)
+                logger.info("SSO assist: click Next")
+                return
+        except Exception:
+            pass
+        try:
+            nxt = page.get_by_role("button", name="Avanti").first
+            if nxt.count() and nxt.is_visible(timeout=600):
+                nxt.click(timeout=3000)
+                logger.info("SSO assist: click Avanti")
+        except Exception:
+            pass
+
+    def _assist_eni_adfs_page(self, page, username: str) -> None:
+        """Su ADFS Eni: username (se manca) + password da keyring, poi submit."""
+        user_selectors = (
+            "#userNameInput",
+            'input[name="UserName"]',
+            'input[type="email"]',
+            'input[name="username"]',
+            "#username",
+        )
+        for sel in user_selectors:
+            try:
+                el = page.locator(sel).first
+                if not el.count() or not el.is_visible(timeout=500):
+                    continue
+                current_val = ""
+                try:
+                    current_val = (el.input_value(timeout=400) or "").strip()
+                except Exception:
+                    current_val = ""
+                if not current_val:
+                    el.fill(username)
+                    logger.info("SSO assist: username su ADFS Eni (%s)", username)
+                break
+            except Exception:
+                continue
+
+        password = self._resolve_login_password()
+        if not password:
+            return
+        pwd_selectors = (
+            "#passwordInput",
+            'input[name="Password"]',
+            'input[type="password"]',
+        )
+        for sel in pwd_selectors:
+            try:
+                el = page.locator(sel).first
+                if not el.count() or not el.is_visible(timeout=500):
+                    continue
+                current_val = ""
+                try:
+                    current_val = (el.input_value(timeout=400) or "").strip()
+                except Exception:
+                    current_val = ""
+                if not current_val:
+                    el.fill(password)
+                    logger.info("SSO assist: password inserita su ADFS Eni")
+                break
+            except Exception:
+                continue
+
+        # Evita submit ripetuti sulla stessa URL
+        try:
+            url_key = (page.url or "")[:180]
+        except Exception:
+            url_key = ""
+        if getattr(self, "_sso_adfs_submit_for", "") == url_key:
+            return
+
+        for sel in (
+            "#submitButton",
+            'span#submitButton',
+            'input[type="submit"]',
+            'button[type="submit"]',
+        ):
+            try:
+                btn = page.locator(sel).first
+                if btn.count() and btn.is_visible(timeout=500):
+                    btn.click(timeout=3000)
+                    self._sso_adfs_submit_for = url_key
+                    logger.info("SSO assist: submit ADFS Eni")
+                    return
+            except Exception:
+                continue
+
+    def _sso_wait_probe(self, *, require_enispace_private: bool = False) -> bool:
+        """Probe durante wait: assiste SSO, poi verifica sessione."""
+        self._assist_sso_login_once()
+        if require_enispace_private:
+            ok = self._enispace_private_online()
+        else:
+            ok = self._manual_login_probe()
+        if ok:
+            self._session_active = True
+        return ok
+
+    def _wait_for_sso_if_needed(
+        self,
+        *,
+        max_wait_seconds: float = 600.0,
+        context: str = "eniSpace",
+        require_enispace_private: bool = False,
+    ) -> bool:
+        """Se siamo su IdP / senza sessione, attende login (con assist email)."""
+        if require_enispace_private:
+            if self._enispace_private_online():
+                self._session_active = True
+                return True
+        elif self._manual_login_probe():
             return True
 
+        current = self.browser.current_url() or ""
+        on_idp = self._is_identity_provider_url(current)
+        if (
+            not require_enispace_private
+            and not on_idp
+            and self._url_looks_authenticated(current)
+        ):
+            self._session_active = True
+            return True
+
+        username = self._resolve_login_username()
+        if username:
+            logger.info(
+                "SSO richiesto per %s: assist login con %s "
+                "(MFA/OTP manuale se richiesto, attesa max %.0fs)...",
+                context,
+                username,
+                max_wait_seconds,
+            )
+        else:
+            logger.info(
+                "SSO richiesto per %s: completare il login in Chrome "
+                "(salva username in Impostazioni per assist automatico, attesa max %.0fs)...",
+                context,
+                max_wait_seconds,
+            )
+        # Assist immediato prima del loop
+        self._assist_sso_login_once()
+        ok = self.browser.wait_for_manual_login(
+            is_logged_in=lambda: self._sso_wait_probe(
+                require_enispace_private=require_enispace_private
+            ),
+            max_wait_seconds=max_wait_seconds,
+        )
+        self._session_active = ok
+        return ok
+
+    def ensure_enispace_online(self) -> bool:
+        """
+        Prerequisito supervisor/Marketplace: eniSpace area privata autenticata.
+        Non apre Marketplace finché myhome/private non è online.
+        """
+        logger.info("STEP 0 — Verifica eniSpace online (area privata)")
+        self.login(allow_manual=True)
+        if self._enispace_private_online():
+            logger.info("eniSpace online: area privata confermata.")
+            self._session_active = True
+            return True
+
+        # Forza myhome e attendi SSO fino a private
+        if not self._probe_private_session():
+            if not self._wait_for_sso_if_needed(
+                max_wait_seconds=600,
+                context="eniSpace (prerequisito Marketplace)",
+                require_enispace_private=True,
+            ):
+                raise LoginFailedError(
+                    "eniSpace non è online (area privata non raggiungibile).\n"
+                    "Completare il login Microsoft/ADFS in Chrome "
+                    f"({self._resolve_login_username() or 'username in Impostazioni'}) "
+                    "e riprovare prima del Marketplace."
+                )
+        if not self._enispace_private_online():
+            raise LoginFailedError(
+                "eniSpace non confermato online.\n"
+                "Attendere il redirect su myhome/private dopo il login."
+            )
+        logger.info("eniSpace online: area privata confermata dopo SSO.")
+        self._session_active = True
+        return True
+
+    def _probe_private_session(self) -> bool:
+        """
+        Verifica sessione aprendo myhome (privata).
+        Se redirect a Microsoft/SSO → non autenticati.
+        """
+        probe = ENISPACE_MYHOME_URL or Selectors.ORDINI_URL or ENISPACE_ORDINI_URL
+        if not probe:
+            return False
+        try:
+            logger.info("Verifica sessione su area privata: %s", probe)
+            self.browser.goto(probe, wait_until="domcontentloaded")
+        except Exception as exc:
+            logger.warning("Probe sessione privata fallito: %s", exc)
+            return False
+
+        current = self.browser.current_url() or ""
+        if self._is_identity_provider_url(current):
+            logger.info("Sessione assente: redirect IdP (%s)", current[:120])
+            return False
+        if self._enispace_private_online() or self._manual_login_probe():
+            logger.info("Sessione privata confermata.")
+            self._session_active = True
+            return True
         return False
 
     @staticmethod
@@ -510,9 +940,14 @@ class EniSpaceService:
         ]
         if self.db is not None:
             try:
-                candidates.append(self.db.get_settings().marketplace_base_url)
+                from app.modules.config.enispace_runtime import load_portal_browser_runtime
+
+                candidates.append(load_portal_browser_runtime(self.db).marketplace_base_url)
             except Exception:
-                pass
+                try:
+                    candidates.append(self.db.get_settings().marketplace_base_url)
+                except Exception:
+                    pass
         candidates.append(Selectors.MARKETPLACE_URL)
         candidates.append(ENISPACE_MARKETPLACE_URL)
 
@@ -1671,20 +2106,39 @@ class EniSpaceService:
             logger.debug("Fetch href PDF fallito: %s", exc)
         return None
 
+    def _marketplace_sso_probe(self) -> bool:
+        self._assist_sso_login_once()
+        current = self.browser.current_url() or ""
+        return self._is_marketplace_url(current) or self._manual_login_probe()
+
     def open_document_flow(self) -> str:
         """
         Percorso osservato nel video (mail MdA → PDF):
+          0. eniSpace online (area privata) — prerequisito
           1. Ordini e consuntivi (eniSpace)
           2. Click «Accedi a Marketplace» (nuova scheda)
           3. Tile «Consuntivazione» → dashboard filtri ZMP_DSH-DISPLAY
         """
         import time
 
-        self.login(allow_manual=True)
+        # Supervisor: prima eniSpace online, poi Marketplace
+        self.ensure_enispace_online()
 
         logger.info("STEP 1/4 — Ordini e consuntivi")
         self.open_ordini()
         time.sleep(1.2)
+
+        if not self._enispace_private_online():
+            if not self._wait_for_sso_if_needed(
+                max_wait_seconds=600,
+                context="Ordini e consuntivi",
+                require_enispace_private=True,
+            ):
+                raise LoginFailedError(
+                    "Login eniSpace non completato su Ordini.\n"
+                    "Completare MFA/SSO nella finestra Chrome e riprovare "
+                    "prima di aprire Marketplace."
+                )
 
         logger.info("STEP 2/4 — Accedi a Marketplace (pulsante pagina)")
         mp_url = self.browser.run(self._click_accedi_marketplace)
@@ -1695,14 +2149,12 @@ class EniSpaceService:
 
         time.sleep(1.5)
         current = self.browser.current_url() or ""
-        if "login.microsoftonline.com" in current.lower() or "authentication" in current.lower():
+        if self._is_identity_provider_url(current):
             logger.info(
-                "SSO richiesto per Marketplace: completare il login in Chrome..."
+                "SSO richiesto per Marketplace: assist + login in Chrome..."
             )
             ok = self.browser.wait_for_manual_login(
-                is_logged_in=lambda: self._is_marketplace_url(
-                    self.browser.current_url()
-                ),
+                is_logged_in=self._marketplace_sso_probe,
                 max_wait_seconds=300,
             )
             if not ok:
@@ -2463,13 +2915,28 @@ class EniSpaceService:
     def open_ordini(self) -> str:
         """
         Apre «I miei ordini e consuntivi» su eniSpace (URL stabile dalla mail).
+        Se la sessione non è valida, resta sull'IdP e attende SSO (non naviga via).
         """
         url = Selectors.ORDINI_URL or ENISPACE_ORDINI_URL
         self.ensure_browser()
         self.browser.enable_interactive()
         logger.info("Apertura Ordini e consuntivi (eniSpace stabile): %s", url)
         self.browser.goto(url, wait_until="domcontentloaded")
-        return self.browser.current_url() or url
+        current = self.browser.current_url() or url
+        if self._is_identity_provider_url(current) or not self._url_looks_authenticated(
+            current
+        ):
+            if not self._wait_for_sso_if_needed(
+                max_wait_seconds=600,
+                context="Ordini e consuntivi",
+                require_enispace_private=True,
+            ):
+                raise LoginFailedError(
+                    "Login eniSpace non completato.\n"
+                    "Completare MFA/SSO nella finestra Chrome e riprovare."
+                )
+            current = self.browser.current_url() or url
+        return current
 
     def open_marketplace(self, *, force_direct: bool = False) -> str:
         """
@@ -2481,6 +2948,20 @@ class EniSpaceService:
         url = self.resolve_marketplace_url()
         self.ensure_browser()
         self.browser.enable_interactive()
+
+        current = self.browser.current_url() or ""
+        if self._is_identity_provider_url(current):
+            logger.info(
+                "SSO Microsoft in corso: attendo il login prima di aprire Marketplace."
+            )
+            if not self._wait_for_sso_if_needed(
+                max_wait_seconds=600,
+                context="Marketplace (pre-navigazione)",
+            ):
+                raise LoginFailedError(
+                    "Login Microsoft non completato.\n"
+                    "Completare MFA/SSO nella finestra Chrome e riprovare."
+                )
 
         if force_direct:
             logger.info("Apertura diretta Marketplace (ultimo URL noto): %s", url)
@@ -2534,15 +3015,9 @@ class EniSpaceService:
                 self._session_active = True
                 return True, "Accesso eniSpace riuscito. Sessione attiva."
 
-            if not _selector_ready(Selectors.LOGGED_IN_INDICATOR):
-                return (
-                    True,
-                    "Chrome aperto su eniSpace. Completare il login se richiesto: "
-                    "il selettore di sessione non è ancora mappato.",
-                )
             raise SessionExpiredError(
-                "Sessione eniSpace scaduta.\n"
-                "È necessario effettuare nuovamente l'accesso."
+                "Sessione eniSpace non confermata.\n"
+                "Completare il login Microsoft/SSO in Chrome e riprovare."
             )
         except SelectorsNotConfiguredError as exc:
             return False, exc.message

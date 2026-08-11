@@ -363,3 +363,14 @@ def test_successful_real_flow_print_wording(
     assert any("CODA DI STAMPA" in m for m in events)
     assert not any("STAMPATO CON SUCCESSO" in m for m in events)
     assert repo.db.is_imap_processed("INBOX.MdA_Eni:99")
+
+
+def test_logger_progress_marks_for_chat() -> None:
+    jlog = JarvisLogger()
+    seen: list = []
+    jlog.add_listener(lambda e: seen.append(e))
+    jlog.log("tecnico")
+    jlog.progress("Risveglio eseguito")
+    assert seen[0].for_chat is False
+    assert seen[1].for_chat is True
+    assert seen[1].message == "Risveglio eseguito"

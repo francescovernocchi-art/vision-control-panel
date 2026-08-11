@@ -4105,11 +4105,13 @@ class MainWindow(ctk.CTk):
                 tag = "INFO"
             msg = getattr(entry, "message", "") or ""
             ts = getattr(entry, "timestamp", None) or ""
-            # Chat transcript (messaggi Supervisor → utente)
-            if msg:
+            for_chat = bool(getattr(entry, "for_chat", False))
+            # Chat: solo progress operativi + errori
+            if msg and (for_chat or tag == "ERROR"):
                 self._append_chat_message(
                     msg, role="supervisor", level=tag, timestamp=str(ts)[-8:] if ts else None
                 )
+                self._publish_supervisor_chat_remote(msg, level=tag)
             if not hasattr(self, "jarvis_console"):
                 return
             try:
@@ -4123,23 +4125,42 @@ class MainWindow(ctk.CTk):
 
         self._post_ui(ui)
 
+    def _publish_supervisor_chat_remote(self, message: str, *, level: str = "INFO") -> None:
+        """Opzionale: allinea agent_messages PWA alle stesse righe chat (soft-fail)."""
+        text = (message or "").strip()
+        if not text:
+            return
+        try:
+            agent = getattr(self, "remote_agent", None)
+            if agent is None or not bool(getattr(agent, "enabled", False)):
+                return
+            backend = getattr(agent, "backend", None)
+            if backend is None or not hasattr(backend, "publish_message"):
+                return
+            lvl = (level or "info").lower()
+            if lvl == "success":
+                lvl = "info"
+            backend.publish_message(
+                message=text,
+                level=lvl,
+                source="supervisor",
+                metadata={"channel": "control_panel_chat"},
+            )
+        except Exception:
+            pass
+
     def _on_jarvis_notify(self, payload) -> None:
         def ui() -> None:
             try:
                 ev = str(getattr(payload, "event", "") or "").lower()
                 msg = getattr(payload, "message", "") or ev
-                level = "INFO"
-                if "error" in ev or "fail" in ev:
-                    level = "ERROR"
+                if "error" in ev or "fail" in ev or "attention" in ev:
                     self._toasts.show(msg[:140], variant="error", title="Supervisor")
                 elif "complete" in ev or "success" in ev or "done" in ev or "printed" in ev:
-                    level = "SUCCESS"
                     self._toasts.show(msg[:140], variant="success", title="Completato")
                 elif "warn" in ev:
-                    level = "WARNING"
                     self._toasts.show(msg[:140], variant="warning", title="Attenzione")
-                if msg:
-                    self._append_chat_message(str(msg), role="supervisor", level=level)
+                # Chat già aggiornata via logger.progress — evita doppioni
             except Exception:
                 pass
 
@@ -4171,11 +4192,7 @@ class MainWindow(ctk.CTk):
         self.append_activity(
             "VISION Supervisor attivato — verifica moduli e login se offline."
         )
-        self._append_chat_message(
-            "Mi sto svegliando. Verifico moduli e login se offline.",
-            role="supervisor",
-            level="SUCCESS",
-        )
+        # Progress chat emesso dal Supervisor («Risveglio eseguito», «Inizio analisi», …)
         self._refresh_jarvis_status_ui()
         self.refresh_jarvis_history()
         try:
@@ -4193,11 +4210,7 @@ class MainWindow(ctk.CTk):
         self._avatar_react("ack", intensity=0.6)
         self._append_chat_message("Disattiva", role="user", level="INFO")
         self.append_activity("VISION Supervisor disattivato.")
-        self._append_chat_message(
-            "Mi metto in standby. Usa Sveglia quando ti servo.",
-            role="supervisor",
-            level="WARNING",
-        )
+        # Progress «Supervisor disattivato — standby» emesso da jarvis.stop()
         self._refresh_jarvis_status_ui()
         try:
             self._toasts.show(

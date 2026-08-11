@@ -1,10 +1,12 @@
 # Lovable prompt — Agent ↔ PWA thin channel (wake / status / messages)
 
-Copia questo prompt in Lovable se il push su `main` non è disponibile.
+Copia questo prompt in Lovable **solo** se il push su `main` non è disponibile o se Lovable propone di sovrascrivere la chat.
 
 ## Obiettivo
 PWA e Agent desktop comunicano **solo via Supabase** (niente merge repo).
 Device: `VIS-TARANTO-01`.
+
+**Home dopo login = chat mobile-first con VISION Supervisor** (non dashboard ops).
 
 ## Già su Supabase
 RPCs: `agent_heartbeat`, `agent_fetch_pending_commands`, `agent_update_command`,
@@ -19,11 +21,20 @@ Se `agent_publish_message` usa ancora `p_agent_token`, applica:
 -- (contenuto nel repo Agent vision-main)
 ```
 
-## Modifiche UI / client (incolla)
+## UI chat (canonical su `/chat`)
 
-1. **Tipi comandi** — abilita `WAKE_SUPERVISOR` e `DEACTIVATE_SUPERVISOR` in `COMMAND_WHITELIST` / `REMOTE_COMMAND_ENABLED` (`remoteEnabled: true`).
+1. Dopo login → redirect a `/chat` (non dashboard).
+2. Una composizione: avatar Supervisor + chip **Agent** / **Supervisor** + feed messaggi full-width + sticky **Sveglia** / **Disattiva** + composer.
+3. Feed da `agent_messages` via `useAgentMessages` (`src/lib/vision-data.ts`):
+   - select `*` order `created_at` desc, poll 5s + realtime INSERT
+   - normalizza sia schema thin (`message`/`source`/`metadata`) sia chat Lovable (`body`/`direction`/`title`)
+4. Progress Agent («Risveglio eseguito», «Inizio analisi», «Attivazione modulo eniSpace», …) appaiono come bolle VISION nel feed.
+5. **Sveglia** → `enqueueSupervisorCommand(deviceId, "WAKE_SUPERVISOR")`
+6. **Disattiva** → stesso helper con `DEACTIVATE_SUPERVISOR` + conferma keyword `DISATTIVA`
+7. Design: navy / silver / electric cyan; layout mobile-first, thumb zone in basso.
+8. Non mettere `VISION_AGENT_TOKEN` nella PWA. Non abilitare comandi job (mail/retry/approve).
 
-2. **Helper** in `src/lib/vision-remote-status.ts`:
+## Helper
 
 ```ts
 export async function enqueueSupervisorCommand(
@@ -39,19 +50,8 @@ export async function enqueueSupervisorCommand(
 }
 ```
 
-3. **Hook messaggi** — `useAgentMessages(deviceId)` su tabella `agent_messages`:
-   - select `*` order `created_at desc` limit 40
-   - poll 5s + realtime INSERT su `agent_messages`
-
-4. **Pagina dispositivo** (`dispositivi/$code`):
-   - Bottoni **Sveglia** → `enqueueSupervisorCommand(code, "WAKE_SUPERVISOR")`
-   - **Disattiva** → `enqueueSupervisorCommand(code, "DEACTIVATE_SUPERVISOR")` con conferma keyword `DISATTIVA`
-   - Sezione **Messaggi Agent** che lista `useAgentMessages`
-   - Mantieni **Aggiorna stato** via `create_get_status_command`
-
-5. **normalizeDeviceRow**: conserva `id` uuid Lovable; `code` / `device_id` restano il codice logico (`VIS-TARANTO-01`).
-
-6. Non abilitare comandi job (mail/retry/approve) — restano `NON ANCORA ABILITATO`.
+## Pagina dispositivo (`dispositivi/$code`)
+Mantiene Sveglia / Disattiva / Messaggi Agent / GET_STATUS (ops dettaglio). La home resta la chat.
 
 ## Verifica
-Agent con `VISION_REMOTE_ENABLED=true` → PWA vede device ONLINE → Sveglia → messaggio «Supervisor attivato» in feed.
+Agent con `VISION_REMOTE_ENABLED=true` → PWA login → chat → device ONLINE → Sveglia → righe progress in feed.

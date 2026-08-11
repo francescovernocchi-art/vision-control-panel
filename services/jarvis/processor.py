@@ -91,6 +91,11 @@ class JobProcessor:
         job.printer_name = printer_name or job.printer_name or ""
         self.repo.update(job)
         self._event(job, "Avvio lavorazione", JarvisState.ANALISI_MAIL)
+        self.jlog.progress(
+            "Inizio lavorazione",
+            level=LogLevel.INFO,
+            state=JarvisState.ANALISI_MAIL,
+        )
         self._set_state(job, JarvisState.ANALISI_MAIL, on_state)
 
         max_attempts = max(1, int(job.max_attempts or 3))
@@ -146,6 +151,11 @@ class JobProcessor:
     ) -> JarvisJob:
         self._set_state(job, JarvisState.ANALISI_MAIL, on_state)
         self._event(job, "Analisi mail (simulazione)", JarvisState.ANALISI_MAIL)
+        self.jlog.progress(
+            "Analisi mail",
+            level=LogLevel.INFO,
+            state=JarvisState.ANALISI_MAIL,
+        )
 
         order = (job.order_number or "").strip()
         module = (job.acquisition_module or "").strip()
@@ -168,6 +178,11 @@ class JobProcessor:
             level=LogLevel.SUCCESS,
             state=JarvisState.CONTRATTO_RICONOSCIUTO,
         )
+        self.jlog.progress(
+            f"Ordine riconosciuto: {order}",
+            level=LogLevel.SUCCESS,
+            state=JarvisState.CONTRATTO_RICONOSCIUTO,
+        )
         self._event(
             job,
             f"Ordine {order}, contratto {job.contract_number or '—'}, MdA {module}",
@@ -175,17 +190,18 @@ class JobProcessor:
             level=LogLevel.SUCCESS,
         )
 
-        for st, msg in (
-            (JarvisState.ACCESSO_ENISPACE, "Simulazione accesso eniSpace"),
-            (JarvisState.RICERCA_DOCUMENTI, "Simulazione ricerca documenti"),
-            (JarvisState.DOWNLOAD, "Simulazione download (nessun file reale)"),
-            (JarvisState.PREPARAZIONE_STAMPA, "Simulazione preparazione stampa"),
-            (JarvisState.STAMPA, "Simulazione stampa — NON inviato alla stampante"),
-            (JarvisState.VERIFICA, "Verifica simulazione OK"),
+        for st, msg, chat in (
+            (JarvisState.ACCESSO_ENISPACE, "Simulazione accesso eniSpace", "Accesso eniSpace"),
+            (JarvisState.RICERCA_DOCUMENTI, "Simulazione ricerca documenti", "Ricerca documenti marketplace"),
+            (JarvisState.DOWNLOAD, "Simulazione download (nessun file reale)", "Download documenti"),
+            (JarvisState.PREPARAZIONE_STAMPA, "Simulazione preparazione stampa", "Preparazione stampa"),
+            (JarvisState.STAMPA, "Simulazione stampa — NON inviato alla stampante", "Invio in stampa (simulazione)"),
+            (JarvisState.VERIFICA, "Verifica simulazione OK", "Verifica completata"),
         ):
             self._set_state(job, st, on_state)
             self._event(job, msg, st)
             self.jlog.log(msg, level=LogLevel.INFO, state=st)
+            self.jlog.progress(chat, level=LogLevel.INFO, state=st)
 
         job.docs_found = 1
         job.docs_downloaded = 0
@@ -216,9 +232,20 @@ class JobProcessor:
                 "Modulo di Acquisizione non riconosciuto nella mail."
             )
 
+        self.jlog.progress(
+            "Analisi mail",
+            level=LogLevel.INFO,
+            state=JarvisState.ANALISI_MAIL,
+        )
+
         self._set_state(job, JarvisState.CONTRATTO_RICONOSCIUTO, on_state)
         self.jlog.log(
             f"Ordine identificato: {order}",
+            level=LogLevel.SUCCESS,
+            state=JarvisState.CONTRATTO_RICONOSCIUTO,
+        )
+        self.jlog.progress(
+            f"Ordine riconosciuto: {order}",
             level=LogLevel.SUCCESS,
             state=JarvisState.CONTRATTO_RICONOSCIUTO,
         )
@@ -243,18 +270,40 @@ class JobProcessor:
             level=LogLevel.INFO,
             state=JarvisState.ACCESSO_ENISPACE,
         )
+        self.jlog.progress(
+            "Accesso eniSpace",
+            level=LogLevel.INFO,
+            state=JarvisState.ACCESSO_ENISPACE,
+        )
         self._event(job, "Accesso eniSpace / ricerca", JarvisState.ACCESSO_ENISPACE)
 
         def progress(msg: str) -> None:
             low = (msg or "").lower()
             if "ricerca" in low or "ordine" in low:
-                self._set_state(job, JarvisState.RICERCA_DOCUMENTI, on_state)
+                if job.state != JarvisState.RICERCA_DOCUMENTI:
+                    self._set_state(job, JarvisState.RICERCA_DOCUMENTI, on_state)
+                    self.jlog.progress(
+                        "Ricerca documenti marketplace",
+                        level=LogLevel.INFO,
+                        state=JarvisState.RICERCA_DOCUMENTI,
+                    )
             elif "download" in low or "mdA" in low.lower() or "mda" in low:
-                self._set_state(job, JarvisState.DOWNLOAD, on_state)
+                if job.state != JarvisState.DOWNLOAD:
+                    self._set_state(job, JarvisState.DOWNLOAD, on_state)
+                    self.jlog.progress(
+                        "Download documenti",
+                        level=LogLevel.INFO,
+                        state=JarvisState.DOWNLOAD,
+                    )
             self.jlog.log(msg, level=LogLevel.INFO, state=job.state)
 
         try:
             self._set_state(job, JarvisState.RICERCA_DOCUMENTI, on_state)
+            self.jlog.progress(
+                "Ricerca documenti marketplace",
+                level=LogLevel.INFO,
+                state=JarvisState.RICERCA_DOCUMENTI,
+            )
             item = self.batch._process_notice(  # noqa: SLF001 — riuso intenzionale
                 notice,
                 source_name=job.subject[:80] or f"jarvis-{job.mail_id}",
@@ -342,13 +391,28 @@ class JobProcessor:
             level=LogLevel.SUCCESS,
             state=JarvisState.DOWNLOAD,
         )
+        self.jlog.progress(
+            "Download completato",
+            level=LogLevel.SUCCESS,
+            state=JarvisState.DOWNLOAD,
+        )
 
         # --- Stampa automatica Jarvis (non simulazione) ---
         self._set_state(job, JarvisState.PREPARAZIONE_STAMPA, on_state)
         self._event(job, "Preparazione stampa", JarvisState.PREPARAZIONE_STAMPA)
+        self.jlog.progress(
+            "Preparazione stampa",
+            level=LogLevel.INFO,
+            state=JarvisState.PREPARAZIONE_STAMPA,
+        )
         self._set_state(job, JarvisState.STAMPA, on_state)
         self.jlog.log(
             "Invio documento alla coda di stampa",
+            level=LogLevel.INFO,
+            state=JarvisState.STAMPA,
+        )
+        self.jlog.progress(
+            "Invio in stampa",
             level=LogLevel.INFO,
             state=JarvisState.STAMPA,
         )
@@ -363,6 +427,11 @@ class JobProcessor:
             print_msg = "INVIATO CORRETTAMENTE ALLA CODA DI STAMPA"
             self._event(job, print_msg, JarvisState.STAMPA, level=LogLevel.SUCCESS)
             self.jlog.log(print_msg, level=LogLevel.SUCCESS, state=JarvisState.STAMPA)
+            self.jlog.progress(
+                "Documento inviato in stampa",
+                level=LogLevel.SUCCESS,
+                state=JarvisState.STAMPA,
+            )
         except Exception as exc:
             raise NeedsAttentionError(
                 f"Invio alla coda di stampa fallito: {exc}"
@@ -432,6 +501,11 @@ class JobProcessor:
             level=LogLevel.SUCCESS,
             state=JarvisState.COMPLETATO,
         )
+        self.jlog.progress(
+            f"Lavorazione completata — ordine {job.order_number or '—'}",
+            level=LogLevel.SUCCESS,
+            state=JarvisState.COMPLETATO,
+        )
         self._set_state(job, JarvisState.COMPLETATO, on_state)
         self.notifications.emit(
             NotifyEvent.JOB_COMPLETED,
@@ -458,6 +532,11 @@ class JobProcessor:
             job, message, JarvisState.INTERVENTO_RICHIESTO, level=LogLevel.ERROR
         )
         self.jlog.log(message, level=LogLevel.ERROR, state=JarvisState.INTERVENTO_RICHIESTO)
+        self.jlog.progress(
+            f"Intervento richiesto: {message}",
+            level=LogLevel.ERROR,
+            state=JarvisState.INTERVENTO_RICHIESTO,
+        )
         self._set_state(job, JarvisState.INTERVENTO_RICHIESTO, on_state)
         self.notifications.emit(
             NotifyEvent.NEEDS_ATTENTION,

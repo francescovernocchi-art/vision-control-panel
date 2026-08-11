@@ -87,6 +87,7 @@ class JarvisSupervisor:
         self.current_job: Optional[JarvisJob] = None
         self._imap_cfg_cache: Optional[ImapConfig] = None
         self._module_statuses: list[ModuleStatus] = []
+        self._announce_wake_cycle = False
 
     # ------------------------------------------------------------------ properties
     @property
@@ -117,9 +118,15 @@ class JarvisSupervisor:
                 )
             self._stop.clear()
             self._active = True
+            self._announce_wake_cycle = True
             self.state = JarvisState.IN_ATTESA
             self.logger.log(
                 "JARVIS attivato",
+                level=LogLevel.SUCCESS,
+                state=JarvisState.IN_ATTESA,
+            )
+            self.logger.progress(
+                "Risveglio eseguito",
                 level=LogLevel.SUCCESS,
                 state=JarvisState.IN_ATTESA,
             )
@@ -137,6 +144,11 @@ class JarvisSupervisor:
             self.state = JarvisState.OFFLINE
             self.logger.log(
                 "JARVIS disattivato",
+                level=LogLevel.INFO,
+                state=JarvisState.OFFLINE,
+            )
+            self.logger.progress(
+                "Supervisor disattivato — standby",
                 level=LogLevel.INFO,
                 state=JarvisState.OFFLINE,
             )
@@ -200,11 +212,25 @@ class JarvisSupervisor:
             state=JarvisState.VERIFICA_MODULI,
         )
 
+        def _module_progress(msg: str) -> None:
+            self.logger.progress(
+                msg,
+                level=LogLevel.INFO,
+                state=JarvisState.VERIFICA_MODULI,
+            )
+
         try:
-            statuses = self.module_guard.check_and_ensure(ensure=True)
+            statuses = self.module_guard.check_and_ensure(
+                ensure=True, on_progress=_module_progress
+            )
         except Exception as exc:
             logger.exception("Verifica moduli fallita: %s", exc)
             self.logger.log(
+                f"Verifica moduli fallita: {exc}",
+                level=LogLevel.ERROR,
+                state=JarvisState.ERRORE,
+            )
+            self.logger.progress(
                 f"Verifica moduli fallita: {exc}",
                 level=LogLevel.ERROR,
                 state=JarvisState.ERRORE,
@@ -234,6 +260,11 @@ class JarvisSupervisor:
                 level=LogLevel.WARNING,
                 state=JarvisState.INTERVENTO_RICHIESTO,
             )
+            self.logger.progress(
+                f"Attesa login moduli: {names}",
+                level=LogLevel.WARNING,
+                state=JarvisState.INTERVENTO_RICHIESTO,
+            )
             self.state = JarvisState.INTERVENTO_RICHIESTO
             self._notify_ui()
             return False
@@ -258,6 +289,15 @@ class JarvisSupervisor:
             )
             return
 
+        announce = bool(self._announce_wake_cycle)
+        if announce:
+            self._announce_wake_cycle = False
+            self.logger.progress(
+                "Inizio analisi",
+                level=LogLevel.INFO,
+                state=JarvisState.IN_ATTESA,
+            )
+
         # 1) Moduli online (login automatico se necessario)
         modules_ok = self._ensure_modules_online()
         if not self._active or self._stop.is_set():
@@ -275,14 +315,31 @@ class JarvisSupervisor:
                 level=LogLevel.WARNING,
                 state=JarvisState.ERRORE,
             )
+            self.logger.progress(
+                "Credenziali IMAP mancanti",
+                level=LogLevel.WARNING,
+                state=JarvisState.ERRORE,
+            )
             self.state = JarvisState.IN_ATTESA
             self._notify_ui()
             return
+
+        if announce:
+            self.logger.progress(
+                "Analisi posta elettronica",
+                level=LogLevel.INFO,
+                state=JarvisState.CONTROLLO_MAIL,
+            )
 
         try:
             candidates = self.watcher.poll(cfg)
         except Exception as exc:
             self.logger.log(
+                f"Controllo mail fallito: {exc}",
+                level=LogLevel.ERROR,
+                state=JarvisState.ERRORE,
+            )
+            self.logger.progress(
                 f"Controllo mail fallito: {exc}",
                 level=LogLevel.ERROR,
                 state=JarvisState.ERRORE,
@@ -296,6 +353,19 @@ class JarvisSupervisor:
                 cand,
                 simulation=bool(settings.simulation),
                 max_attempts=max(1, int(settings.max_retries or 3)),
+            )
+
+        if candidates:
+            self.logger.progress(
+                f"Nuove mail rilevate: {len(candidates)}",
+                level=LogLevel.SUCCESS,
+                state=JarvisState.NUOVA_MAIL,
+            )
+        elif announce:
+            self.logger.progress(
+                "Nessuna nuova mail",
+                level=LogLevel.INFO,
+                state=JarvisState.IN_ATTESA,
             )
 
         self._notify_ui()

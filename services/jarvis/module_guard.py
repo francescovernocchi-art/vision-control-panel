@@ -161,7 +161,12 @@ class ModuleOnlineGuard:
             return False
         return all(s.online for s in statuses if s.required)
 
-    def check_and_ensure(self, *, ensure: bool = True) -> list[ModuleStatus]:
+    def check_and_ensure(
+        self,
+        *,
+        ensure: bool = True,
+        on_progress: Optional[Callable[[str], None]] = None,
+    ) -> list[ModuleStatus]:
         results: list[ModuleStatus] = []
         for provider in self.providers:
             online = False
@@ -175,6 +180,11 @@ class ModuleOnlineGuard:
                         "Modulo %s offline → attiva login/connessione",
                         provider.label,
                     )
+                    if on_progress:
+                        try:
+                            on_progress(f"Attivazione modulo {provider.label}")
+                        except Exception:
+                            pass
                     online = bool(provider.ensure_online())
                     message = (
                         "login completato" if online else "login fallito o incompleto"

@@ -21,6 +21,7 @@ class JarvisLogEntry:
     level: str
     message: str
     state: str = ""
+    for_chat: bool = False
 
     def format_line(self) -> str:
         return f"{self.timestamp} — [{self.level}] {self.message}"
@@ -48,16 +49,31 @@ class JarvisLogger:
     def entries(self) -> list[JarvisLogEntry]:
         return list(self._entries)
 
-    def log(
+    def progress(
         self,
         message: str,
         *,
         level: str = LogLevel.INFO,
         state: str = "",
     ) -> JarvisLogEntry:
+        """Messaggio operativo breve destinato alla chat Control Panel."""
+        return self.log(message, level=level, state=state, for_chat=True)
+
+    def log(
+        self,
+        message: str,
+        *,
+        level: str = LogLevel.INFO,
+        state: str = "",
+        for_chat: bool = False,
+    ) -> JarvisLogEntry:
         ts = datetime.now().strftime("%H:%M:%S")
         entry = JarvisLogEntry(
-            timestamp=ts, level=str(level), message=message, state=state or ""
+            timestamp=ts,
+            level=str(level),
+            message=message,
+            state=state or "",
+            for_chat=bool(for_chat),
         )
         self._entries.append(entry)
         # File log tecnico

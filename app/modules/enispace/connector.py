@@ -24,8 +24,25 @@ class EniSpaceConnector:
 
     def session_active(self) -> bool:
         try:
-            if self.enispace and hasattr(self.enispace, "is_logged_in"):
+            if self.enispace is None:
+                return False
+            if hasattr(self.enispace, "_enispace_private_online"):
+                return bool(self.enispace._enispace_private_online())
+            if hasattr(self.enispace, "is_logged_in"):
                 return bool(self.enispace.is_logged_in())
         except Exception:
             return False
         return False
+
+    def ensure_online(self) -> bool:
+        """Attiva login se la sessione privata non è online."""
+        try:
+            if self.enispace is None:
+                return False
+            if hasattr(self.enispace, "ensure_enispace_online"):
+                return bool(self.enispace.ensure_enispace_online())
+            if hasattr(self.enispace, "login"):
+                return bool(self.enispace.login(allow_manual=True))
+        except Exception:
+            return False
+        return self.session_active()
