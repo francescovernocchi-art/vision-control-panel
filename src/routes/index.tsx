@@ -33,7 +33,7 @@ function IndexRoute() {
     let active = true;
     supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
-      router.navigate({ to: data.session ? "/dashboard" : "/auth", replace: true });
+      router.navigate({ to: data.session ? "/chat" : "/auth", replace: true });
     });
     return () => {
       active = false;

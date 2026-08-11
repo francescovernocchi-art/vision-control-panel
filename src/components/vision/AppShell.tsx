@@ -9,6 +9,7 @@ import {
   ListChecks,
   LogOut,
   Menu,
+  MessageSquare,
   ScrollText,
   Settings,
   ShieldCheck,
@@ -32,6 +33,7 @@ import { isDeviceOnline } from "@/lib/vision";
 
 
 const NAV = [
+  { to: "/chat", label: "Chat Supervisor", icon: MessageSquare },
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/attivita", label: "Attività", icon: Activity },
   { to: "/moduli", label: "Moduli", icon: Cpu },
@@ -76,6 +78,7 @@ export function AppShell({
     "commands",
     "notifications",
     "approvals",
+    "agent_messages",
   ]);
   const liveStatus = !online ? "OFFLINE" : realtime === "LIVE" ? "ONLINE" : "PENDING";
 

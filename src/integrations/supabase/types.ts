@@ -46,10 +46,13 @@ export type Database = {
       }
       agent_messages: {
         Row: {
+          author_id: string | null
           body: string | null
           command_id: string | null
           created_at: string
+          delivered_at: string | null
           device_id: string
+          direction: string
           id: string
           level: string
           message_type: string
@@ -58,10 +61,13 @@ export type Database = {
           title: string | null
         }
         Insert: {
+          author_id?: string | null
           body?: string | null
           command_id?: string | null
           created_at?: string
+          delivered_at?: string | null
           device_id: string
+          direction?: string
           id?: string
           level?: string
           message_type?: string
@@ -70,10 +76,13 @@ export type Database = {
           title?: string | null
         }
         Update: {
+          author_id?: string | null
           body?: string | null
           command_id?: string | null
           created_at?: string
+          delivered_at?: string | null
           device_id?: string
+          direction?: string
           id?: string
           level?: string
           message_type?: string
@@ -784,6 +793,10 @@ export type Database = {
     }
     Functions: {
       admin_exists: { Args: never; Returns: boolean }
+      agent_fetch_outbound_messages: {
+        Args: { p_device_id: string; p_limit?: number; p_token: string }
+        Returns: Json[]
+      }
       agent_fetch_pending_commands: {
         Args: { p_device_id: string; p_limit?: number; p_token: string }
         Returns: Json[]
