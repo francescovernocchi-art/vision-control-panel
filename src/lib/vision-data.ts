@@ -40,8 +40,10 @@ export function normalizeDeviceRow(raw: Record<string, unknown>): {
   is_demo: boolean;
   hostname?: string | null;
 } {
-  const deviceId = String(raw["device_id"] ?? raw["code"] ?? raw["id"] ?? "");
-  const name = String(raw["device_name"] ?? raw["name"] ?? deviceId);
+  const logicalId = String(raw["device_id"] ?? raw["code"] ?? raw["id"] ?? "");
+  const uuidOrId = String(raw["id"] ?? logicalId);
+  const code = String(raw["code"] ?? raw["device_id"] ?? logicalId);
+  const name = String(raw["device_name"] ?? raw["name"] ?? (code || logicalId));
   const metadata = (raw["metadata"] as Record<string, unknown> | undefined) ?? {};
   const metaThreshold = metadata["offline_threshold_seconds"];
   const hb = raw["heartbeat_threshold_seconds"];
@@ -52,9 +54,9 @@ export function normalizeDeviceRow(raw: Record<string, unknown>): {
         ? metaThreshold
         : 60;
   return {
-    device_id: deviceId,
-    id: deviceId,
-    code: deviceId,
+    device_id: String(raw["device_id"] ?? code),
+    id: uuidOrId,
+    code,
     name,
     device_name: name,
     location: (raw["location"] as string | null) ?? null,
@@ -97,6 +99,64 @@ export const useCommands = () =>
   useTable<any>("commands", "commands", (q) =>
     q.order("requested_at", { ascending: false }).limit(100),
   );
+
+export type AgentMessageRow = {
+  id: number | string;
+  device_id: string;
+  level: string;
+  message: string;
+  source: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export function useAgentMessages(deviceId?: string | null, limit = 40) {
+  const queryClient = useQueryClient();
+  const logical = (deviceId || "").trim();
+
+  const query = useQuery<AgentMessageRow[]>({
+    queryKey: ["agent_messages", logical || "all"],
+    queryFn: async () => {
+      let q: any = supabase
+        .from("agent_messages" as never)
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (logical) q = q.eq("device_id", logical);
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data ?? []) as AgentMessageRow[];
+    },
+    enabled: true,
+    refetchInterval: 5_000,
+  });
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`agent_messages:${logical || "all"}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "agent_messages",
+          ...(logical ? { filter: `device_id=eq.${logical}` } : {}),
+        },
+        () => {
+          void queryClient.invalidateQueries({
+            queryKey: ["agent_messages", logical || "all"],
+          });
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [logical, queryClient]);
+
+  return query;
+}
+
 export const useAuditLogs = () =>
   useTable<any>("audit_logs", "audit_logs", (q) =>
     q.order("created_at", { ascending: false }).limit(200),
@@ -224,8 +284,12 @@ export async function sendCommand(input: {
   job_id?: string | null;
   parameters?: Record<string, unknown>;
 }) {
-  // Fase status_only: solo GET_STATUS via RPC contratto (nessun insert diretto).
-  if (input.command_type !== "GET_STATUS") {
+  const thin = new Set([
+    "GET_STATUS",
+    "WAKE_SUPERVISOR",
+    "DEACTIVATE_SUPERVISOR",
+  ]);
+  if (!thin.has(input.command_type)) {
     throw new Error(REMOTE_NOT_ENABLED);
   }
 
@@ -236,14 +300,24 @@ export async function sendCommand(input: {
   if (input.target_device_id) {
     const { data: device } = await supabase
       .from("devices")
-      .select("code")
+      .select("code, device_id")
       .eq("id", input.target_device_id)
       .maybeSingle();
-    if (device?.code) deviceCode = device.code;
+    const row = device as { code?: string; device_id?: string } | null;
+    deviceCode = String(row?.device_id || row?.code || deviceCode);
   }
 
-  const { data, error } = await supabase.rpc("create_get_status_command" as never, {
+  if (input.command_type === "GET_STATUS") {
+    // Prefer legacy helper when present; fallback to thin enqueue.
+    const viaLegacy = await supabase.rpc("create_get_status_command" as never, {
+      p_device_id: deviceCode,
+    } as never);
+    if (!viaLegacy.error) return viaLegacy.data;
+  }
+
+  const { data, error } = await supabase.rpc("enqueue_supervisor_command" as never, {
     p_device_id: deviceCode,
+    p_command_type: input.command_type,
   } as never);
   if (error) throw error;
   return data;

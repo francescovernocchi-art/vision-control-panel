@@ -1,8 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { ArrowLeft, Moon, RefreshCw, Sun } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { AppShell } from "@/components/vision/AppShell";
+import { CommandButton } from "@/components/vision/CommandButton";
 import { StatusBadge, StatusDot } from "@/components/vision/StatusBadge";
 import {
   EniSpaceStatusCard,
@@ -19,10 +21,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { useRoles } from "@/hooks/useAuth";
 import { formatDateTime, formatRelative } from "@/lib/vision";
-import { useCommands, useDevices } from "@/lib/vision-data";
+import { useAgentMessages, useCommands, useDevices } from "@/lib/vision-data";
 import {
   createGetStatusCommand,
   derivedAgentStatus,
+  enqueueSupervisorCommand,
   isCloudConfigured,
   pickLatestGetStatusCommand,
   waitForGetStatusResult,
@@ -51,6 +54,13 @@ function DeviceDetailPage() {
   const cloud = isCloudConfigured();
   const { data: devices = [], isLoading: devicesLoading } = useDevices();
   const { data: commands = [], refetch: refetchCommands } = useCommands();
+  const logicalDeviceId = useMemo(() => {
+    const d = devices.find((row: { code?: string; device_id?: string }) => row.code === code);
+    return String(d?.device_id || d?.code || code);
+  }, [devices, code]);
+  const { data: agentMessages = [], isLoading: messagesLoading } = useAgentMessages(
+    logicalDeviceId,
+  );
 
   const device = useMemo(
     () => devices.find((d: any) => d.code === code) ?? null,
@@ -130,17 +140,62 @@ function DeviceDetailPage() {
     }
   }
 
+  async function sendThinCommand(type: "WAKE_SUPERVISOR" | "DEACTIVATE_SUPERVISOR") {
+    if (!device) return;
+    const label = type === "WAKE_SUPERVISOR" ? "Sveglia" : "Disattiva";
+    try {
+      await enqueueSupervisorCommand(device.device_id || device.code, type);
+      toast.success(`${label} inviata all'Agent`, {
+        description: `Comando ${type} in coda per ${device.code}`,
+      });
+    } catch (e) {
+      toast.error(`Invio ${label} fallito`, {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
   return (
     <AppShell
       title={device?.code ?? code}
-      subtitle={`${product} · dettaglio dispositivo · GET_STATUS only`}
+      subtitle={`${product} · Agent ↔ PWA · canale sottile`}
       actions={
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button asChild size="sm" variant="ghost">
             <Link to="/dispositivi">
               <ArrowLeft className="size-4" aria-hidden /> Elenco
             </Link>
           </Button>
+          <CommandButton
+            label="Sveglia"
+            icon={<Sun className="size-4" aria-hidden />}
+            description="Invia WAKE_SUPERVISOR all'Agent desktop. Il Supervisor locale verrà avviato."
+            sensitive
+            confirmLabel="Sveglia Supervisor"
+            disabled={!canOperate || !cloud || !device || onlineStatus === "OFFLINE"}
+            disabledReason={
+              onlineStatus === "OFFLINE"
+                ? "Agent offline — impossibile svegliare il Supervisor."
+                : undefined
+            }
+            onConfirm={() => sendThinCommand("WAKE_SUPERVISOR")}
+          />
+          <CommandButton
+            label="Disattiva"
+            icon={<Moon className="size-4" aria-hidden />}
+            variant="destructive"
+            description="Invia DEACTIVATE_SUPERVISOR all'Agent. Il Supervisor locale verrà arrestato."
+            sensitive
+            confirmKeyword="DISATTIVA"
+            confirmLabel="Disattiva Supervisor"
+            disabled={!canOperate || !cloud || !device || onlineStatus === "OFFLINE"}
+            disabledReason={
+              onlineStatus === "OFFLINE"
+                ? "Agent offline — impossibile disattivare da remoto."
+                : undefined
+            }
+            onConfirm={() => sendThinCommand("DEACTIVATE_SUPERVISOR")}
+          />
           <Button
             size="sm"
             variant="secondary"
@@ -195,6 +250,38 @@ function DeviceDetailPage() {
                   <dd className="font-mono">{displayValue(device.hostname)}</dd>
                 </div>
               </dl>
+            </SectionCard>
+
+            <SectionCard
+              title="Messaggi Agent"
+              subtitle="Feed thin channel (agent_messages)"
+            >
+              {messagesLoading ? <LoadingState label="Caricamento messaggi…" /> : null}
+              {!messagesLoading && agentMessages.length === 0 ? (
+                <EmptyState
+                  title="Nessun messaggio"
+                  description="Dopo Sveglia / Disattiva / GET_STATUS l'Agent pubblica qui lo stato."
+                />
+              ) : (
+                <ul className="max-h-64 space-y-2 overflow-y-auto text-xs">
+                  {agentMessages.map((m) => (
+                    <li
+                      key={String(m.id)}
+                      className="rounded-lg border border-border/70 bg-background/30 px-3 py-2"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-mono text-[0.65rem] uppercase text-muted-foreground">
+                          {m.level} · {m.source}
+                        </span>
+                        <span className="font-mono text-[0.65rem] text-muted-foreground">
+                          {formatRelative(m.created_at)}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm">{m.message}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </SectionCard>
 
             {onlineStatus === "OFFLINE" ? <OfflineState /> : null}

@@ -29,6 +29,8 @@ export type SupervisorState =
 
 export type CommandType =
   | "GET_STATUS"
+  | "WAKE_SUPERVISOR"
+  | "DEACTIVATE_SUPERVISOR"
   | "CHECK_ENISPACE_MAIL"
   | "RETRY_JOB"
   | "PAUSE_MODULE"
@@ -44,6 +46,18 @@ export const COMMAND_WHITELIST: Record<
   GET_STATUS: {
     label: "Stato agent",
     sensitive: false,
+    roles: ["ADMIN", "OPERATORE"],
+    remoteEnabled: true,
+  },
+  WAKE_SUPERVISOR: {
+    label: "Sveglia Supervisor",
+    sensitive: true,
+    roles: ["ADMIN", "OPERATORE"],
+    remoteEnabled: true,
+  },
+  DEACTIVATE_SUPERVISOR: {
+    label: "Disattiva Supervisor",
+    sensitive: true,
     roles: ["ADMIN", "OPERATORE"],
     remoteEnabled: true,
   },

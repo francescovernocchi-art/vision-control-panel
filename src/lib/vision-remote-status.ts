@@ -19,9 +19,11 @@ export const OFFLINE_THRESHOLD_SECONDS = Number(
 export const AGENT_TIMEOUT_MESSAGE = "VIS•ION Agent non ha risposto";
 export const REMOTE_NOT_ENABLED = "NON ANCORA ABILITATO";
 
-/** Comandi remoti: solo GET_STATUS in questa fase */
+/** Comandi remoti thin channel */
 export const REMOTE_COMMAND_ENABLED: Record<string, boolean> = {
   GET_STATUS: true,
+  WAKE_SUPERVISOR: true,
+  DEACTIVATE_SUPERVISOR: true,
   CHECK_ENISPACE_MAIL: false,
   RETRY_JOB: false,
   PAUSE_MODULE: false,
@@ -175,6 +177,24 @@ export async function createGetStatusCommand(
   const row = normalizeCommandRow(data as Record<string, unknown>);
   if (!row) throw new Error("create_get_status_command: empty response");
   return row;
+}
+
+export type ThinSupervisorCommand =
+  | "WAKE_SUPERVISOR"
+  | "DEACTIVATE_SUPERVISOR"
+  | "GET_STATUS";
+
+/** Enqueue thin lifecycle command (PWA → Agent via Supabase). */
+export async function enqueueSupervisorCommand(
+  deviceId: string,
+  commandType: ThinSupervisorCommand,
+): Promise<string> {
+  const { data, error } = await supabase.rpc("enqueue_supervisor_command" as never, {
+    p_device_id: deviceId,
+    p_command_type: commandType,
+  } as never);
+  if (error) throw error;
+  return String(data ?? "");
 }
 
 export async function fetchCommand(commandId: string): Promise<CommandRow | null> {
