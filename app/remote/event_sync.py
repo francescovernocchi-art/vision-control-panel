@@ -90,6 +90,37 @@ class EventSync:
             except Exception as exc:  # noqa: BLE001
                 remote_log.warning("create_notification failed: %s", exc)
 
+    @staticmethod
+    def _italian_command_message(
+        event_type: str, message: str, metadata: Optional[dict[str, Any]]
+    ) -> str:
+        """Human-readable Italian lines for PWA agent_messages feed."""
+        raw = (message or "").strip()
+        meta = metadata or {}
+        ctype = str(meta.get("command_type") or raw).upper()
+        labels = {
+            "WAKE_SUPERVISOR": "Sveglia Supervisor",
+            "DEACTIVATE_SUPERVISOR": "Disattiva Supervisor",
+            "GET_STATUS": "Stato Agent",
+        }
+        label = labels.get(ctype, raw or ctype or "comando")
+        if event_type == "COMMAND_RECEIVED":
+            return f"Comando ricevuto: {label}"
+        if event_type == "COMMAND_STARTED":
+            return f"Esecuzione: {label}"
+        if event_type == "COMMAND_COMPLETED":
+            if ctype == "WAKE_SUPERVISOR":
+                return "Supervisor attivato (WAKE)"
+            if ctype == "DEACTIVATE_SUPERVISOR":
+                return "Supervisor disattivato"
+            if ctype == "GET_STATUS":
+                return "GET_STATUS completato"
+            return f"Completato: {label}"
+        if event_type == "COMMAND_FAILED":
+            detail = str(meta.get("message") or meta.get("code") or raw or "errore")
+            return f"Fallito: {label} — {detail}"[:500]
+        return raw or event_type
+
     def publish_command_event(
         self,
         event_type: str,
@@ -98,13 +129,18 @@ class EventSync:
         message: str,
         metadata: Optional[dict[str, Any]] = None,
     ) -> None:
+        meta = dict(metadata or {})
+        # Preserve command_type when message is the type code.
+        if message and "command_type" not in meta and message.isupper() and "_" in message:
+            meta.setdefault("command_type", message)
+        text = self._italian_command_message(event_type, message, meta)
         remote_event = RemoteEvent(
             event_type=event_type,
-            message=message,
+            message=text,
             module="remote",
             command_id=command_id,
             device_id=self.device_id,
-            metadata=dict(metadata or {}),
+            metadata=meta,
         )
         try:
             self.backend.publish_event(remote_event)

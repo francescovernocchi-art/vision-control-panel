@@ -448,7 +448,15 @@ class VisionRemoteAgent:
                 "COMMAND_COMPLETED",
                 command_id=cmd.command_id,
                 message=cmd.command_type,
-                metadata={"ok": True},
+                metadata={
+                    "ok": True,
+                    "command_type": cmd.command_type,
+                    **(
+                        {"supervisor": payload.get("supervisor")}
+                        if isinstance(payload.get("supervisor"), str)
+                        else {}
+                    ),
+                },
             )
             return cmd
         except Exception as exc:  # noqa: BLE001

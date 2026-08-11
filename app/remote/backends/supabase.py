@@ -228,8 +228,55 @@ class SupabaseRemoteBackend:
     def sync_job(self, job: dict[str, Any]) -> None:
         return None
 
+    def publish_message(
+        self,
+        *,
+        message: str,
+        device_id: str = "",
+        level: str = "info",
+        source: str = "agent",
+        metadata: Optional[dict] = None,
+    ) -> None:
+        """Thin inbound feed for PWA / Control Panel observers."""
+        text = (message or "").strip()
+        if not text:
+            return
+        payload: dict[str, Any] = {
+            "p_device_id": device_id or self.config.device_id,
+            "p_token": self._agent_token,
+            "p_message": text[:2000],
+            "p_level": (level or "info")[:32],
+            "p_source": (source or "agent")[:64],
+            "p_metadata": metadata or {},
+        }
+        try:
+            self._rpc("agent_publish_message", payload)
+        except Exception as exc:  # noqa: BLE001
+            # Soft-fail: command loop must not die if message feed is absent/misaligned.
+            remote_log.warning("agent_publish_message failed: %s", exc)
+
     def publish_event(self, event: RemoteEvent) -> None:
-        return None
+        et = str(getattr(event, "event_type", "") or "")
+        # Thin channel: only command lifecycle + remote/supervisor notices.
+        if not (
+            et.startswith("COMMAND_")
+            or et in {"DEVICE_DEGRADED", "DEVICE_ONLINE", "SUPERVISOR_WAKE", "SUPERVISOR_OFF"}
+            or str(getattr(event, "module", "") or "") in {"remote", "supervisor"}
+        ):
+            return
+        level = "error" if "FAIL" in et or et.endswith("FAILED") else "info"
+        meta = dict(getattr(event, "metadata", None) or {})
+        if getattr(event, "command_id", None):
+            meta.setdefault("command_id", event.command_id)
+        if et:
+            meta.setdefault("event_type", et)
+        self.publish_message(
+            message=str(getattr(event, "message", "") or et or "evento agent"),
+            device_id=str(getattr(event, "device_id", "") or self.config.device_id),
+            level=level,
+            source=str(getattr(event, "module", "") or "agent"),
+            metadata=meta,
+        )
 
     def create_notification(
         self,
@@ -240,7 +287,19 @@ class SupabaseRemoteBackend:
         device_id: str = "",
         metadata: Optional[dict] = None,
     ) -> None:
-        return None
+        meta = dict(metadata or {})
+        if event_type:
+            meta.setdefault("event_type", event_type)
+        if job_id:
+            meta.setdefault("job_id", job_id)
+        level = "warning" if "DEGRADED" in (event_type or "").upper() else "info"
+        self.publish_message(
+            message=message or event_type or "notifica agent",
+            device_id=device_id or self.config.device_id,
+            level=level,
+            source="agent",
+            metadata=meta,
+        )
 
     def _update_command_rpc(
         self,

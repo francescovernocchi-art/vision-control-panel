@@ -38,7 +38,8 @@ Policy Agent: `status_only` consente **solo** questi tre (non job operativi).
 ### Messaggi inbound
 
 - **Locale (Control Panel):** console Supervisor / activity già esistenti.
-- **Cloud (opzionale):** tabella `agent_messages` + RPC `agent_publish_message` — feed leggero, non job store.
+- **Cloud:** tabella `agent_messages` + RPC `agent_publish_message` — feed leggero, non job store.
+- Sequenze mermaid e verifica E2E: [`VISION_AGENT_PWA_COMMUNICATION.md`](./VISION_AGENT_PWA_COMMUNICATION.md).
 
 ## Migration da applicare
 

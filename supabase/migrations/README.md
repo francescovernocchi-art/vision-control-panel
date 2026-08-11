@@ -5,6 +5,7 @@
 | File | Quando |
 |------|--------|
 | `20260811_agent_thin_channel_pwa_compat.sql` | **Usare questo** su progetto Supabase con schema PWA Lovable già esistente (`devices.id` uuid + `code`, senza `device_id`). Additive: non DROP. |
+| `20260811b_agent_publish_message_p_token.sql` | Allinea `agent_publish_message` a arg **`p_token`** (come heartbeat live). |
 | `20260808_vision_remote_readonly.sql` | Solo progetto **greenfield** vuoto (crea `devices` con PK text `device_id`). **Non** applicare se `devices` PWA esiste già. |
 
 Contratto canale sottile: [`docs/VISION_CP_AGENT_THIN_CHANNEL.md`](../../docs/VISION_CP_AGENT_THIN_CHANNEL.md).

@@ -103,3 +103,64 @@ def test_connect_probe_uses_select_star(monkeypatch):
     assert calls
     assert calls[0][1] == "/rest/v1/devices"
     assert calls[0][2].get("select") == "*"
+
+
+def test_publish_message_uses_p_token(monkeypatch):
+    cfg = RemoteConfig(
+        mode="supabase",
+        supabase_url="https://example.supabase.co",
+        vision_agent_token="tok-secret",
+        supabase_anon_key="anon",
+        device_id="VIS-TARANTO-01",
+    )
+    be = SupabaseRemoteBackend(cfg)
+    calls = []
+
+    def fake_rpc(fn, body):
+        calls.append((fn, body))
+        return {"ok": True, "id": 1}
+
+    monkeypatch.setattr(be, "_rpc", fake_rpc)
+    be.publish_message(message="Supervisor attivato (WAKE)", level="info", source="remote")
+    assert len(calls) == 1
+    assert calls[0][0] == "agent_publish_message"
+    assert calls[0][1]["p_token"] == "tok-secret"
+    assert calls[0][1]["p_device_id"] == "VIS-TARANTO-01"
+    assert "WAKE" in calls[0][1]["p_message"]
+
+
+def test_publish_event_skips_job_noise(monkeypatch):
+    from app.remote.models import RemoteEvent
+
+    cfg = RemoteConfig(
+        mode="supabase",
+        supabase_url="https://example.supabase.co",
+        vision_agent_token="tok",
+        supabase_anon_key="anon",
+        device_id="VIS-TARANTO-01",
+    )
+    be = SupabaseRemoteBackend(cfg)
+    calls = []
+    monkeypatch.setattr(be, "_rpc", lambda fn, body: calls.append((fn, body)))
+
+    be.publish_event(
+        RemoteEvent(
+            event_type="JOB_STARTED",
+            message="job",
+            module="enispace",
+            device_id="VIS-TARANTO-01",
+        )
+    )
+    assert calls == []
+
+    be.publish_event(
+        RemoteEvent(
+            event_type="COMMAND_COMPLETED",
+            message="Supervisor attivato (WAKE)",
+            module="remote",
+            device_id="VIS-TARANTO-01",
+            command_id="11111111-1111-1111-1111-111111111111",
+        )
+    )
+    assert len(calls) == 1
+    assert calls[0][0] == "agent_publish_message"
