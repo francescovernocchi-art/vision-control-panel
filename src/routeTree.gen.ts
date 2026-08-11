@@ -16,6 +16,7 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthenticatedApprovazioniRouteImport } from './routes/_authenticated/approvazioni'
 import { Route as AuthenticatedAttivitaRouteImport } from './routes/_authenticated/attivita'
 import { Route as AuthenticatedAuditRouteImport } from './routes/_authenticated/audit'
+import { Route as AuthenticatedChatRouteImport } from './routes/_authenticated/chat'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedDispositiviRouteImport } from './routes/_authenticated/dispositivi'
 import { Route as AuthenticatedImpostazioniRouteImport } from './routes/_authenticated/impostazioni'
@@ -64,6 +65,11 @@ const AuthenticatedAttivitaRoute = AuthenticatedAttivitaRouteImport.update({
 const AuthenticatedAuditRoute = AuthenticatedAuditRouteImport.update({
   id: '/audit',
   path: '/audit',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedChatRoute = AuthenticatedChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
@@ -151,6 +157,7 @@ export interface FileRoutesByFullPath {
   '/approvazioni': typeof AuthenticatedApprovazioniRoute
   '/attivita': typeof AuthenticatedAttivitaRoute
   '/audit': typeof AuthenticatedAuditRoute
+  '/chat': typeof AuthenticatedChatRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dispositivi': typeof AuthenticatedDispositiviRouteWithChildren
   '/impostazioni': typeof AuthenticatedImpostazioniRoute
@@ -173,6 +180,7 @@ export interface FileRoutesByTo {
   '/approvazioni': typeof AuthenticatedApprovazioniRoute
   '/attivita': typeof AuthenticatedAttivitaRoute
   '/audit': typeof AuthenticatedAuditRoute
+  '/chat': typeof AuthenticatedChatRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dispositivi': typeof AuthenticatedDispositiviRouteWithChildren
   '/impostazioni': typeof AuthenticatedImpostazioniRoute
@@ -196,6 +204,7 @@ export interface FileRoutesById {
   '/_authenticated/approvazioni': typeof AuthenticatedApprovazioniRoute
   '/_authenticated/attivita': typeof AuthenticatedAttivitaRoute
   '/_authenticated/audit': typeof AuthenticatedAuditRoute
+  '/_authenticated/chat': typeof AuthenticatedChatRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/dispositivi': typeof AuthenticatedDispositiviRouteWithChildren
   '/_authenticated/impostazioni': typeof AuthenticatedImpostazioniRoute
@@ -220,6 +229,7 @@ export interface FileRouteTypes {
     | '/approvazioni'
     | '/attivita'
     | '/audit'
+    | '/chat'
     | '/dashboard'
     | '/dispositivi'
     | '/impostazioni'
@@ -242,6 +252,7 @@ export interface FileRouteTypes {
     | '/approvazioni'
     | '/attivita'
     | '/audit'
+    | '/chat'
     | '/dashboard'
     | '/dispositivi'
     | '/impostazioni'
@@ -264,6 +275,7 @@ export interface FileRouteTypes {
     | '/_authenticated/approvazioni'
     | '/_authenticated/attivita'
     | '/_authenticated/audit'
+    | '/_authenticated/chat'
     | '/_authenticated/dashboard'
     | '/_authenticated/dispositivi'
     | '/_authenticated/impostazioni'
@@ -336,6 +348,13 @@ declare module '@tanstack/react-router' {
       path: '/audit'
       fullPath: '/audit'
       preLoaderRoute: typeof AuthenticatedAuditRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/chat': {
+      id: '/_authenticated/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof AuthenticatedChatRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/dashboard': {
@@ -473,6 +492,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedApprovazioniRoute: typeof AuthenticatedApprovazioniRoute
   AuthenticatedAttivitaRoute: typeof AuthenticatedAttivitaRoute
   AuthenticatedAuditRoute: typeof AuthenticatedAuditRoute
+  AuthenticatedChatRoute: typeof AuthenticatedChatRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDispositiviRoute: typeof AuthenticatedDispositiviRouteWithChildren
   AuthenticatedImpostazioniRoute: typeof AuthenticatedImpostazioniRoute
@@ -489,6 +509,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedApprovazioniRoute: AuthenticatedApprovazioniRoute,
   AuthenticatedAttivitaRoute: AuthenticatedAttivitaRoute,
   AuthenticatedAuditRoute: AuthenticatedAuditRoute,
+  AuthenticatedChatRoute: AuthenticatedChatRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDispositiviRoute: AuthenticatedDispositiviRouteWithChildren,
   AuthenticatedImpostazioniRoute: AuthenticatedImpostazioniRoute,
@@ -513,13 +534,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
