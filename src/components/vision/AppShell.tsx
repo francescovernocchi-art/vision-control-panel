@@ -33,31 +33,36 @@ import { isDeviceOnline } from "@/lib/vision";
 
 
 const NAV = [
-  { to: "/chat", label: "Chat Supervisor", icon: MessageSquare },
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/attivita", label: "Attività", icon: Activity },
-  { to: "/moduli", label: "Moduli", icon: Cpu },
-  { to: "/lavorazioni", label: "Lavorazioni", icon: ListChecks },
-  { to: "/notifiche", label: "Notifiche", icon: BellRing },
-  { to: "/approvazioni", label: "Approvazioni", icon: BadgeCheck },
-  { to: "/dispositivi", label: "Dispositivi", icon: Activity },
-  { to: "/audit", label: "Audit", icon: ScrollText },
-  { to: "/impostazioni", label: "Impostazioni", icon: Settings },
-  { to: "/profilo", label: "Profilo", icon: User },
+  { to: "/chat", label: "Chat", icon: MessageSquare, mobileLabel: "Chat" },
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, mobileLabel: "Home" },
+  { to: "/attivita", label: "Attività", icon: Activity, mobileLabel: "Stato" },
+  { to: "/dispositivi", label: "Dispositivi", icon: Activity, mobileLabel: "Device" },
+  { to: "/moduli", label: "Moduli", icon: Cpu, mobileLabel: "Moduli" },
+  { to: "/lavorazioni", label: "Lavorazioni", icon: ListChecks, mobileLabel: "Jobs" },
+  { to: "/notifiche", label: "Notifiche", icon: BellRing, mobileLabel: "Alert" },
+  { to: "/approvazioni", label: "Approvazioni", icon: BadgeCheck, mobileLabel: "OK" },
+  { to: "/audit", label: "Audit", icon: ScrollText, mobileLabel: "Audit" },
+  { to: "/impostazioni", label: "Impostazioni", icon: Settings, mobileLabel: "Set" },
+  { to: "/profilo", label: "Profilo", icon: User, mobileLabel: "Io" },
 ] as const;
 
-const MOBILE_NAV = NAV.slice(0, 4);
+const MOBILE_NAV = [NAV[0], NAV[1], NAV[2], NAV[3]];
 
 export function AppShell({
   title,
   subtitle,
   actions,
   children,
+  immersive = false,
+  hideMobileNavLabels = false,
 }: {
   title: string;
   subtitle?: string;
   actions?: ReactNode;
   children: ReactNode;
+  /** Full-bleed chat layout: less chrome, tighter header/main padding. */
+  immersive?: boolean;
+  hideMobileNavLabels?: boolean;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
@@ -162,8 +167,18 @@ export function AppShell({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
-          <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
+        <header
+          className={cn(
+            "sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur",
+            immersive && "lg:border-b",
+          )}
+        >
+          <div
+            className={cn(
+              "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4",
+              immersive ? "py-2" : "py-3",
+            )}
+          >
             <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className="lg:hidden">
@@ -179,9 +194,21 @@ export function AppShell({
               </SheetContent>
             </Sheet>
             <div className="min-w-0">
-              <h1 className="truncate text-base font-semibold tracking-tight sm:text-lg">{title}</h1>
-              {subtitle && (
+              <h1
+                className={cn(
+                  "truncate font-semibold tracking-tight",
+                  immersive ? "text-sm sm:text-base" : "text-base sm:text-lg",
+                )}
+              >
+                {title}
+              </h1>
+              {subtitle && !immersive && (
                 <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
+              )}
+              {subtitle && immersive && (
+                <p className="truncate font-mono text-[0.6rem] tracking-widest text-accent">
+                  {subtitle}
+                </p>
               )}
             </div>
             <div className="flex items-center gap-2">
@@ -226,9 +253,18 @@ export function AppShell({
 
         </header>
 
-        <main className="flex-1 px-4 pt-4 pb-24 lg:pb-8">{children}</main>
+        <main
+          className={cn(
+            "flex-1",
+            immersive
+              ? "px-3 pt-2 pb-[4.25rem] lg:px-4 lg:pb-6"
+              : "px-4 pt-4 pb-24 lg:pb-8",
+          )}
+        >
+          {children}
+        </main>
 
-        <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-background/95 backdrop-blur lg:hidden">
+        <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
           {MOBILE_NAV.map((item) => {
             const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
             return (
@@ -236,21 +272,21 @@ export function AppShell({
                 key={item.to}
                 to={item.to}
                 className={cn(
-                  "flex flex-col items-center gap-1 py-2.5 text-[0.6rem]",
+                  "flex flex-col items-center gap-0.5 py-2 text-[0.6rem]",
                   active ? "text-accent" : "text-muted-foreground",
                 )}
               >
                 <item.icon className="size-5" />
-                {item.label}
+                {!hideMobileNavLabels && item.mobileLabel}
               </Link>
             );
           })}
           <button
             onClick={() => setMenuOpen(true)}
-            className="relative flex flex-col items-center gap-1 py-2.5 text-[0.6rem] text-muted-foreground"
+            className="relative flex flex-col items-center gap-0.5 py-2 text-[0.6rem] text-muted-foreground"
           >
             <ShieldCheck className="size-5" />
-            Altro
+            {!hideMobileNavLabels && "Altro"}
             {unread > 0 && (
               <span className="absolute top-1.5 right-1/4 size-2 rounded-full bg-accent" />
             )}

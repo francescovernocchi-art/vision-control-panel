@@ -34,7 +34,7 @@ function AuthPage() {
 
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => {
-      if (data.session) void navigate({ to: "/dashboard", replace: true });
+      if (data.session) void navigate({ to: "/chat", replace: true });
     });
   }, [navigate]);
 
@@ -48,7 +48,7 @@ function AuthPage() {
       return;
     }
     await logAudit({ action: "LOGIN" });
-    void navigate({ to: "/dashboard", replace: true });
+    void navigate({ to: "/chat", replace: true });
   }
 
   async function signUp(e: React.FormEvent) {
@@ -72,7 +72,7 @@ function AuthPage() {
         description: "Controlla la mail e conferma l'indirizzo per accedere.",
       });
     } else {
-      void navigate({ to: "/dashboard", replace: true });
+      void navigate({ to: "/chat", replace: true });
     }
   }
 

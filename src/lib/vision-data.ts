@@ -104,18 +104,55 @@ export type AgentMessageRow = {
   id: number | string;
   device_id: string;
   level: string;
+  /** Normalized text (thin `message` or chat `body` / `title`). */
   message: string;
   source: string;
   metadata: Record<string, unknown>;
   created_at: string;
+  /** IN = Agent/Supervisor → PWA; OUT = operatore. */
+  direction: "IN" | "OUT";
+  title: string | null;
+  body: string | null;
 };
 
-export function useAgentMessages(deviceId?: string | null, limit = 40) {
+/** Tolerate thin-channel rows (`message`/`source`) and Lovable chat rows (`body`/`direction`). */
+export function normalizeAgentMessageRow(
+  raw: Record<string, unknown>,
+): AgentMessageRow {
+  const body = (raw["body"] as string | null | undefined) ?? null;
+  const title = (raw["title"] as string | null | undefined) ?? null;
+  const thinMessage = (raw["message"] as string | null | undefined) ?? null;
+  const text = String(thinMessage || body || title || "").trim();
+  const rawDir = String(raw["direction"] ?? "").toUpperCase();
+  const direction: "IN" | "OUT" =
+    rawDir === "OUT" ? "OUT" : rawDir === "IN" ? "IN" : thinMessage ? "IN" : "IN";
+  const metadata =
+    (raw["metadata"] as Record<string, unknown> | undefined) ??
+    (raw["payload"] as Record<string, unknown> | undefined) ??
+    {};
+  const source = String(
+    raw["source"] ?? raw["message_type"] ?? metadata["source"] ?? "supervisor",
+  );
+  return {
+    id: (raw["id"] as number | string) ?? "",
+    device_id: String(raw["device_id"] ?? ""),
+    level: String(raw["level"] ?? "info").toUpperCase(),
+    message: text || "—",
+    source,
+    metadata,
+    created_at: String(raw["created_at"] ?? ""),
+    direction,
+    title,
+    body,
+  };
+}
+
+export function useAgentMessages(deviceId?: string | null, limit = 80) {
   const queryClient = useQueryClient();
   const logical = (deviceId || "").trim();
 
   const query = useQuery<AgentMessageRow[]>({
-    queryKey: ["agent_messages", logical || "all"],
+    queryKey: ["agent_messages", logical || "all", limit],
     queryFn: async () => {
       let q: any = supabase
         .from("agent_messages" as never)
@@ -125,7 +162,7 @@ export function useAgentMessages(deviceId?: string | null, limit = 40) {
       if (logical) q = q.eq("device_id", logical);
       const { data, error } = await q;
       if (error) throw error;
-      return (data ?? []) as AgentMessageRow[];
+      return ((data ?? []) as Record<string, unknown>[]).map(normalizeAgentMessageRow);
     },
     enabled: true,
     refetchInterval: 5_000,
