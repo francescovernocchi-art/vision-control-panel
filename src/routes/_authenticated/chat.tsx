@@ -160,7 +160,7 @@ function ChatPage() {
     >
       <div className="flex h-[calc(100dvh-9rem)] flex-col gap-3">
         {/* Agent selector + comandi */}
-        <div className="glass-panel flex flex-wrap items-center gap-2 rounded-xl p-3">
+        <div className="hud-panel flex flex-wrap items-center gap-2 rounded-xl p-3">
           <div className="flex min-w-0 items-center gap-2">
             <StatusDot status={online ? "ONLINE" : "OFFLINE"} />
             <div className="min-w-0">
@@ -219,7 +219,7 @@ function ChatPage() {
         </div>
 
         {/* Conversazione */}
-        <div className="glass-panel flex-1 overflow-y-auto rounded-xl p-3">
+        <div className="hud-panel flex-1 overflow-y-auto rounded-xl p-3">
           {isLoading || devicesLoading ? (
             <div className="flex h-full items-center justify-center text-muted-foreground">
               <Loader2 className="size-5 animate-spin" />
@@ -265,7 +265,7 @@ function ChatPage() {
         </div>
 
         {/* Composer */}
-        <div className="glass-panel rounded-xl p-3">
+        <div className="hud-panel rounded-xl p-3">
           <div className="flex items-end gap-2">
             <Textarea
               ref={inputRef}
