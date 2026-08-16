@@ -1,6 +1,28 @@
-import avatar from "@/assets/vision-supervisor.png";
+import accesso from "@/assets/supervisor/accesso.png";
+import analisi from "@/assets/supervisor/analisi.png";
+import completato from "@/assets/supervisor/completato.png";
+import download from "@/assets/supervisor/download.png";
+import errore from "@/assets/supervisor/errore.png";
+import idle from "@/assets/supervisor/idle.png";
+import intervento from "@/assets/supervisor/intervento.png";
+import mail from "@/assets/supervisor/mail.png";
+import stampa from "@/assets/supervisor/stampa.png";
 import { cn } from "@/lib/utils";
 import { SUPERVISOR_LABEL, type SupervisorState } from "@/lib/vision";
+
+/** Same frame set the desktop Agent uses, so PWA and Agent show one avatar. */
+const STATE_FRAME: Record<SupervisorState, string> = {
+  IDLE: idle,
+  MAIL_RECEIVED: mail,
+  ANALYSIS: analisi,
+  PROCESSING: accesso,
+  DOWNLOAD: download,
+  PRINTING: stampa,
+  WAITING_APPROVAL: intervento,
+  SUCCESS: completato,
+  ERROR: errore,
+  NEEDS_ATTENTION: intervento,
+};
 
 const STATE_RING: Record<SupervisorState, string> = {
   IDLE: "ring-muted-foreground/40",
