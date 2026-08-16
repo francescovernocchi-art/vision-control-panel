@@ -63,7 +63,7 @@ export function SupervisorAvatar({
       aria-label={`VISION Supervisor — ${SUPERVISOR_LABEL[state]}`}
     >
       <img
-        src={avatar}
+        src={STATE_FRAME[state]}
         alt="Avatar VISION Supervisor"
         width={size}
         height={size}
