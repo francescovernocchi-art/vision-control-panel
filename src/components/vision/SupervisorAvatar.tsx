@@ -1,28 +1,24 @@
-import accesso from "@/assets/supervisor/accesso.png";
-import analisi from "@/assets/supervisor/analisi.png";
-import completato from "@/assets/supervisor/completato.png";
-import download from "@/assets/supervisor/download.png";
-import errore from "@/assets/supervisor/errore.png";
-import idle from "@/assets/supervisor/idle.png";
-import intervento from "@/assets/supervisor/intervento.png";
-import mail from "@/assets/supervisor/mail.png";
-import stampa from "@/assets/supervisor/stampa.png";
+import alertFrame from "@/assets/supervisor/vision-alert.jpg";
+import idleFrame from "@/assets/supervisor/vision-idle.jpg";
+import processingFrame from "@/assets/supervisor/vision-processing.jpg";
+import speakingFrame from "@/assets/supervisor/vision-speaking.jpg";
 import { cn } from "@/lib/utils";
 import { SUPERVISOR_LABEL, type SupervisorState } from "@/lib/vision";
 
-/** Same frame set the desktop Agent uses, so PWA and Agent show one avatar. */
+/** Stessa androide VISION del Control Panel desktop: idle / speaking / processing / alert. */
 const STATE_FRAME: Record<SupervisorState, string> = {
-  IDLE: idle,
-  MAIL_RECEIVED: mail,
-  ANALYSIS: analisi,
-  PROCESSING: accesso,
-  DOWNLOAD: download,
-  PRINTING: stampa,
-  WAITING_APPROVAL: intervento,
-  SUCCESS: completato,
-  ERROR: errore,
-  NEEDS_ATTENTION: intervento,
+  IDLE: idleFrame,
+  MAIL_RECEIVED: speakingFrame,
+  ANALYSIS: processingFrame,
+  PROCESSING: processingFrame,
+  DOWNLOAD: processingFrame,
+  PRINTING: processingFrame,
+  WAITING_APPROVAL: alertFrame,
+  SUCCESS: speakingFrame,
+  ERROR: alertFrame,
+  NEEDS_ATTENTION: alertFrame,
 };
+
 
 const STATE_RING: Record<SupervisorState, string> = {
   IDLE: "ring-muted-foreground/40",
