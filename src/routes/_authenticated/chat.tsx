@@ -152,9 +152,13 @@ function ChatPage() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [commandBusy, setCommandBusy] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const feedRef = useRef<HTMLDivElement>(null);
+
+  const slashQuery = draft.trimStart().startsWith("/") ? draft.trim() : "";
+  const showPalette = paletteOpen || slashQuery.length > 0;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
@@ -163,6 +167,12 @@ function ChatPage() {
   async function send() {
     const body = draft.trim();
     if (!body || !deviceId) return;
+    if (isHelpCommand(body)) {
+      setDraft("");
+      setPaletteOpen(true);
+      inputRef.current?.focus();
+      return;
+    }
     setSending(true);
     try {
       const { data: userData } = await supabase.auth.getUser();
@@ -187,7 +197,28 @@ function ChatPage() {
     }
   }
 
-  async function runCommand(type: "WAKE_SUPERVISOR" | "DEACTIVATE_SUPERVISOR") {
+  /** Selezione dal pannello /comandi. */
+  function pickCommand(command: ChatCommand) {
+    if (command.kind === "phrase") {
+      setDraft(command.template ?? "");
+      setPaletteOpen(false);
+      inputRef.current?.focus();
+      return;
+    }
+    if (command.commandType === "DEACTIVATE_SUPERVISOR") {
+      setDraft("");
+      setPaletteOpen(false);
+      toast.info("Usa il pulsante Disattiva: richiede conferma esplicita.");
+      return;
+    }
+    setDraft("");
+    setPaletteOpen(false);
+    if (command.commandType) void runCommand(command.commandType);
+  }
+
+  async function runCommand(
+    type: "WAKE_SUPERVISOR" | "DEACTIVATE_SUPERVISOR" | "GET_STATUS",
+  ) {
     if (!deviceId || commandBusy) return;
     setCommandBusy(true);
     try {
@@ -196,7 +227,9 @@ function ChatPage() {
       toast.success(
         type === "WAKE_SUPERVISOR"
           ? "Sveglia inviata — attendi i messaggi del Supervisor"
-          : "Disattiva inviata — attendi conferma Agent",
+          : type === "GET_STATUS"
+            ? "Richiesta stato inviata all'Agent"
+            : "Disattiva inviata — attendi conferma Agent",
       );
       void queryClient.invalidateQueries({ queryKey: ["commands"] });
       void queryClient.invalidateQueries({ queryKey: ["agent_messages"] });
@@ -206,6 +239,7 @@ function ChatPage() {
       setCommandBusy(false);
     }
   }
+
 
   return (
     <AppShell
