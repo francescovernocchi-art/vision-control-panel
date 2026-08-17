@@ -428,7 +428,7 @@ function ChatPage() {
               icon={<PowerOff className="size-4" />}
               variant="destructive"
               size="default"
-              className="h-12 w-full text-sm font-semibold"
+              className="hud-clip h-14 w-full text-sm font-bold tracking-[0.18em] uppercase"
               sensitive
               confirmKeyword="DISATTIVA"
               description="Invia DEACTIVATE_SUPERVISOR. Il Supervisor locale verrà arrestato."
