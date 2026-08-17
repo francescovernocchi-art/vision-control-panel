@@ -99,22 +99,39 @@ function StatusBar({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5",
-        ok
-          ? "border-success/50 bg-success/10 text-success"
-          : "border-destructive/50 bg-destructive/10 text-destructive",
+        "hud-clip flex items-center justify-between gap-2 px-3 py-2",
+        ok ? "hud-frame text-success" : "hud-frame-danger text-destructive",
       )}
     >
-      <span className="flex min-w-0 items-center gap-1.5 font-mono text-[0.6rem] tracking-widest uppercase">
-        <StatusDot status={ok ? "ONLINE" : "OFFLINE"} pulse={ok} className="size-1.5 shrink-0" />
+      <span className="flex min-w-0 items-center gap-2 font-mono text-[0.65rem] tracking-[0.18em] uppercase">
+        <StatusDot status={ok ? "ONLINE" : "OFFLINE"} pulse={ok} className="size-2 shrink-0" />
         <span className="truncate">{label}</span>
       </span>
-      <span className="shrink-0 font-mono text-[0.6rem] font-semibold tracking-widest uppercase">
+      <span className="shrink-0 font-mono text-[0.65rem] font-bold tracking-[0.18em] uppercase">
         {value}
       </span>
     </div>
   );
 }
+
+/** Metrica del pannello STATO SISTEMA (solo presentazione). */
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 px-2 first:pl-0 last:pr-0">
+      <p className="truncate font-mono text-[0.55rem] tracking-[0.18em] text-muted-foreground uppercase">
+        {label}
+      </p>
+      <p className="truncate font-mono text-lg font-bold text-accent text-glow">{value}</p>
+      <div className="mt-1 h-3 w-full bg-gradient-to-t from-accent/25 to-transparent" />
+    </div>
+  );
+}
+
+function pct(raw: unknown): string {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(n) ? `${Math.round(n)}%` : "—";
+}
+
 
 
 function ChatPage() {
@@ -128,6 +145,9 @@ function ChatPage() {
   const agentOnline = device
     ? isDeviceOnline(device.last_seen_at, device.heartbeat_threshold_seconds ?? 120)
     : false;
+  const metrics = (device?.metadata ?? {}) as Record<string, unknown>;
+
+
 
   const { data: rawMessages = [], isLoading } = useAgentMessages(deviceId, 120);
   const messages = useMemo(
@@ -238,26 +258,27 @@ function ChatPage() {
       immersive
     >
       <div className="flex h-[calc(100dvh-7.5rem)] flex-col lg:h-[calc(100dvh-5.5rem)]">
-        {/* Presence header — one composition */}
+        {/* Presence header — HUD control room */}
         <header className="shrink-0 px-1 pt-1 pb-3">
-          <div className="grid grid-cols-[minmax(0,40%)_minmax(0,1fr)] items-stretch gap-2.5">
-            <div className="relative overflow-hidden rounded-2xl border border-accent/40 bg-card/40 p-1.5">
+          <div className="grid grid-cols-[minmax(0,42%)_minmax(0,1fr)] items-stretch gap-2.5">
+            <div className="hud-frame hud-clip relative overflow-hidden p-1.5">
               <SupervisorAvatar
                 state={presenceToAvatarState(supervisorPresence)}
                 size={0}
-                className="!size-full aspect-[3/4] rounded-xl ring-0 ring-offset-0"
+                className="hud-clip !size-full aspect-[3/4] rounded-none ring-0 ring-offset-0"
               />
+              <div className="pointer-events-none absolute inset-1.5 bg-[radial-gradient(circle_at_50%_38%,transparent_45%,oklch(0.17_0.035_254/70%)_100%)]" />
             </div>
 
-            <div className="min-w-0 space-y-2">
+            <div className="flex min-w-0 flex-col gap-2">
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold tracking-tight uppercase sm:text-base">
+                <p className="truncate text-base font-bold tracking-[0.08em] text-glow uppercase sm:text-lg">
                   {VISION_PRODUCT_NAME} Supervisor
                 </p>
-                <p className="truncate text-xs text-muted-foreground">
+                <p className="truncate text-xs tracking-wide text-foreground/80 uppercase">
                   {device?.name ?? "Nessun dispositivo"}
                 </p>
-                <p className="truncate font-mono text-[0.6rem] tracking-widest text-muted-foreground">
+                <p className="truncate font-mono text-[0.62rem] tracking-[0.18em] text-muted-foreground">
                   {deviceId ?? "—"}
                 </p>
               </div>
@@ -267,6 +288,17 @@ function ChatPage() {
                 value={supervisorPresence}
                 ok={supervisorPresence === "ATTIVO" || supervisorPresence === "ELABORAZIONE"}
               />
+
+              <div className="hud-frame hud-clip mt-auto px-3 py-2">
+                <p className="font-mono text-[0.55rem] tracking-[0.22em] text-muted-foreground uppercase">
+                  Stato sistema
+                </p>
+                <div className="mt-1.5 grid grid-cols-3 divide-x divide-border/60">
+                  <Metric label="CPU" value={pct(metrics["cpu"])} />
+                  <Metric label="Memory" value={pct(metrics["memory"])} />
+                  <Metric label="Network" value={pct(metrics["network"])} />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -274,7 +306,7 @@ function ChatPage() {
             <select
               value={deviceId ?? ""}
               onChange={(e) => setSelected(e.target.value)}
-              className="mt-2.5 w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm"
+              className="hud-frame hud-clip mt-2.5 w-full px-3 py-2.5 text-sm"
               aria-label="Seleziona dispositivo"
             >
               {devices.map((d) => (
@@ -285,6 +317,7 @@ function ChatPage() {
             </select>
           )}
         </header>
+
 
         {/* Message feed */}
         <div ref={feedRef} className="min-h-0 flex-1 overflow-y-auto px-1 py-3">
@@ -308,22 +341,23 @@ function ChatPage() {
                 return (
                   <li
                     key={String(m.id)}
-                    className="grid grid-cols-[2.75rem_minmax(0,1fr)] items-start gap-2"
+                    className="relative grid grid-cols-[3.25rem_minmax(0,1fr)] items-start gap-2"
                   >
-                    <div className="flex flex-col items-center pt-1">
+                    <div className="relative flex flex-col items-center pt-1">
                       <span
                         className={cn(
-                          "grid size-7 shrink-0 place-items-center rounded-full border",
+                          "grid size-8 shrink-0 place-items-center rounded-full border-2",
                           mine
-                            ? "border-primary/60 bg-primary/15 text-primary"
+                            ? "border-primary/70 bg-primary/15 text-primary"
                             : isAlert
-                              ? "border-destructive/60 bg-destructive/15 text-destructive"
-                              : "border-accent/60 bg-accent/10 text-accent",
+                              ? "border-destructive/70 bg-destructive/15 text-destructive"
+                              : "border-accent/70 bg-accent/10 text-accent glow-accent",
                         )}
                       >
-                        <span className="size-2 rounded-full bg-current" />
+                        <span className="size-2.5 rounded-full bg-current" />
                       </span>
-                      <span className="mt-1 font-mono text-[0.5rem] tracking-widest text-muted-foreground uppercase">
+                      <span className="absolute top-10 bottom-[-0.75rem] w-px bg-accent/25" />
+                      <span className="mt-1.5 font-mono text-[0.52rem] tracking-[0.18em] text-accent/80 uppercase">
                         {mine ? "TU" : "VISION"}
                       </span>
                       <span className="text-[0.55rem] text-muted-foreground">
@@ -332,20 +366,21 @@ function ChatPage() {
                     </div>
                     <div
                       className={cn(
-                        "rounded-2xl border px-3.5 py-2.5 text-[0.95rem] leading-snug break-words whitespace-pre-wrap",
+                        "hud-clip px-4 py-3 text-[0.95rem] leading-snug break-words whitespace-pre-wrap",
                         mine
-                          ? "border-primary/50 bg-primary/15 text-foreground"
+                          ? "border border-primary/55 bg-primary/12 text-foreground"
                           : isAlert
-                            ? "border-destructive/50 bg-destructive/10 text-foreground"
-                            : "border-accent/35 bg-card/60 text-foreground",
+                            ? "hud-frame-danger text-foreground"
+                            : "hud-frame text-foreground",
                       )}
                     >
                       {m.title && m.title !== m.message && (
-                        <p className="mb-1 text-sm font-semibold">{m.title}</p>
+                        <p className="mb-1 text-sm font-semibold text-accent">{m.title}</p>
                       )}
                       {m.message}
                     </div>
                   </li>
+
                 );
               })}
               <div ref={endRef} />
@@ -375,7 +410,7 @@ function ChatPage() {
               icon={<Power className="size-4" />}
               variant="default"
               size="default"
-              className="h-12 w-full text-sm font-semibold"
+              className="hud-clip h-14 w-full border border-accent/60 bg-accent/10 text-sm font-bold tracking-[0.18em] text-accent uppercase hover:bg-accent/20"
               description="Invia WAKE_SUPERVISOR all'Agent desktop. Il Supervisor locale verrà avviato e pubblicherà i progressi in chat."
               details={[
                 { label: "Dispositivo", value: deviceId ?? "—" },
@@ -395,7 +430,7 @@ function ChatPage() {
               icon={<PowerOff className="size-4" />}
               variant="destructive"
               size="default"
-              className="h-12 w-full text-sm font-semibold"
+              className="hud-clip h-14 w-full text-sm font-bold tracking-[0.18em] uppercase"
               sensitive
               confirmKeyword="DISATTIVA"
               description="Invia DEACTIVATE_SUPERVISOR. Il Supervisor locale verrà arrestato."
@@ -415,7 +450,7 @@ function ChatPage() {
               type="button"
               variant="outline"
               size="icon"
-              className="size-12 shrink-0 rounded-xl"
+              className="hud-frame hud-clip size-12 shrink-0 rounded-none text-accent hover:bg-accent/15"
               onClick={() => {
                 setPaletteOpen((v) => !v);
                 inputRef.current?.focus();
@@ -442,11 +477,11 @@ function ChatPage() {
               }
 
               disabled={!canOperate || !deviceId || sending}
-              className="min-h-[48px] max-h-28 flex-1 resize-none rounded-xl text-base"
+              className="hud-frame hud-clip max-h-28 min-h-[48px] flex-1 resize-none rounded-none border-accent/45 text-base placeholder:text-muted-foreground/70"
             />
             <Button
               size="icon"
-              className="size-12 shrink-0 rounded-xl"
+              className="hud-clip size-12 shrink-0 rounded-none border border-accent/60 bg-accent/15 text-accent hover:bg-accent/25"
               onClick={() => void send()}
               disabled={!canOperate || !deviceId || sending || !draft.trim()}
               aria-label="Invia messaggio"

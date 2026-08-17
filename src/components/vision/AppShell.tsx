@@ -197,7 +197,9 @@ export function AppShell({
               <h1
                 className={cn(
                   "truncate font-semibold tracking-tight",
-                  immersive ? "text-sm sm:text-base" : "text-base sm:text-lg",
+                  immersive
+                    ? "font-mono text-xl font-bold tracking-[0.2em] text-glow uppercase sm:text-2xl"
+                    : "text-base sm:text-lg",
                 )}
               >
                 {title}
@@ -206,13 +208,31 @@ export function AppShell({
                 <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
               )}
               {subtitle && immersive && (
-                <p className="truncate font-mono text-[0.6rem] tracking-widest text-accent">
+                <p className="truncate font-mono text-[0.6rem] tracking-[0.22em] text-accent uppercase">
                   {subtitle}
                 </p>
               )}
             </div>
             <div className="flex items-center gap-2">
               {actions}
+              {immersive && (
+                <div className="hud-frame hud-clip flex items-center gap-2 px-3 py-1.5 sm:hidden">
+                  <span className="min-w-0">
+                    <span className="block font-mono text-[0.5rem] tracking-[0.2em] text-muted-foreground uppercase">
+                      Sistema
+                    </span>
+                    <span
+                      className={cn(
+                        "block font-mono text-[0.65rem] font-bold tracking-[0.16em] uppercase",
+                        online ? "text-accent" : "text-destructive",
+                      )}
+                    >
+                      {online ? "ONLINE" : "OFFLINE"}
+                    </span>
+                  </span>
+                  <StatusDot status={online ? "ONLINE" : "OFFLINE"} pulse={online} />
+                </div>
+              )}
               <div className="hidden items-center gap-3 rounded-lg border border-border px-3 py-1.5 sm:flex">
                 <span className="flex items-center gap-1.5 font-mono text-[0.6rem] tracking-widest">
                   <StatusDot status={online ? "ONLINE" : "OFFLINE"} /> CLOUD
@@ -233,6 +253,7 @@ export function AppShell({
               </div>
 
             </div>
+
           </div>
           {!bootstrap.loading && !bootstrap.configured && pathname !== "/setup" && (
             <Link
@@ -264,7 +285,7 @@ export function AppShell({
           {children}
         </main>
 
-        <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
+        <nav className="hud-frame hud-clip fixed inset-x-2 bottom-2 z-30 grid grid-cols-5 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
           {MOBILE_NAV.map((item) => {
             const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
             return (
@@ -272,18 +293,18 @@ export function AppShell({
                 key={item.to}
                 to={item.to}
                 className={cn(
-                  "flex flex-col items-center gap-0.5 py-2 text-[0.6rem]",
-                  active ? "text-accent" : "text-muted-foreground",
+                  "flex flex-col items-center gap-0.5 py-2.5 font-mono text-[0.55rem] tracking-[0.16em] uppercase",
+                  active ? "text-accent text-glow" : "text-muted-foreground",
                 )}
               >
-                <item.icon className="size-5" />
+                <item.icon className={cn("size-5", active && "drop-shadow-[0_0_6px_currentColor]")} />
                 {!hideMobileNavLabels && item.mobileLabel}
               </Link>
             );
           })}
           <button
             onClick={() => setMenuOpen(true)}
-            className="relative flex flex-col items-center gap-0.5 py-2 text-[0.6rem] text-muted-foreground"
+            className="relative flex flex-col items-center gap-0.5 py-2.5 font-mono text-[0.55rem] tracking-[0.16em] text-muted-foreground uppercase"
           >
             <ShieldCheck className="size-5" />
             {!hideMobileNavLabels && "Altro"}
@@ -292,6 +313,7 @@ export function AppShell({
             )}
           </button>
         </nav>
+
       </div>
     </div>
   );
