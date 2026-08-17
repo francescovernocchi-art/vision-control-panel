@@ -403,11 +403,26 @@ function ChatPage() {
           </div>
 
           <div className="flex items-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="size-12 shrink-0 rounded-xl"
+              onClick={() => {
+                setPaletteOpen((v) => !v);
+                inputRef.current?.focus();
+              }}
+              aria-label="Lista comandi"
+              aria-expanded={showPalette}
+            >
+              <SlashSquare className="size-5" />
+            </Button>
             <Textarea
               ref={inputRef}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
+                if (e.key === "Escape") setPaletteOpen(false);
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   void send();
@@ -415,8 +430,9 @@ function ChatPage() {
               }}
               rows={1}
               placeholder={
-                canOperate ? "Messaggio all'Agent (opzionale)…" : "Solo lettura"
+                canOperate ? "Messaggio o /comandi…" : "Solo lettura"
               }
+
               disabled={!canOperate || !deviceId || sending}
               className="min-h-[48px] max-h-28 flex-1 resize-none rounded-xl text-base"
             />
