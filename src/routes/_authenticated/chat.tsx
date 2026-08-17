@@ -255,26 +255,27 @@ function ChatPage() {
       immersive
     >
       <div className="flex h-[calc(100dvh-7.5rem)] flex-col lg:h-[calc(100dvh-5.5rem)]">
-        {/* Presence header — one composition */}
+        {/* Presence header — HUD control room */}
         <header className="shrink-0 px-1 pt-1 pb-3">
-          <div className="grid grid-cols-[minmax(0,40%)_minmax(0,1fr)] items-stretch gap-2.5">
-            <div className="relative overflow-hidden rounded-2xl border border-accent/40 bg-card/40 p-1.5">
+          <div className="grid grid-cols-[minmax(0,42%)_minmax(0,1fr)] items-stretch gap-2.5">
+            <div className="hud-frame hud-clip relative overflow-hidden p-1.5">
               <SupervisorAvatar
                 state={presenceToAvatarState(supervisorPresence)}
                 size={0}
-                className="!size-full aspect-[3/4] rounded-xl ring-0 ring-offset-0"
+                className="hud-clip !size-full aspect-[3/4] rounded-none ring-0 ring-offset-0"
               />
+              <div className="pointer-events-none absolute inset-1.5 bg-[radial-gradient(circle_at_50%_38%,transparent_45%,oklch(0.17_0.035_254/70%)_100%)]" />
             </div>
 
-            <div className="min-w-0 space-y-2">
+            <div className="flex min-w-0 flex-col gap-2">
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold tracking-tight uppercase sm:text-base">
+                <p className="truncate text-base font-bold tracking-[0.08em] text-glow uppercase sm:text-lg">
                   {VISION_PRODUCT_NAME} Supervisor
                 </p>
-                <p className="truncate text-xs text-muted-foreground">
+                <p className="truncate text-xs tracking-wide text-foreground/80 uppercase">
                   {device?.name ?? "Nessun dispositivo"}
                 </p>
-                <p className="truncate font-mono text-[0.6rem] tracking-widest text-muted-foreground">
+                <p className="truncate font-mono text-[0.62rem] tracking-[0.18em] text-muted-foreground">
                   {deviceId ?? "—"}
                 </p>
               </div>
@@ -284,6 +285,17 @@ function ChatPage() {
                 value={supervisorPresence}
                 ok={supervisorPresence === "ATTIVO" || supervisorPresence === "ELABORAZIONE"}
               />
+
+              <div className="hud-frame hud-clip mt-auto px-3 py-2">
+                <p className="font-mono text-[0.55rem] tracking-[0.22em] text-muted-foreground uppercase">
+                  Stato sistema
+                </p>
+                <div className="mt-1.5 grid grid-cols-3 divide-x divide-border/60">
+                  <Metric label="CPU" value={pct(metrics["cpu"])} />
+                  <Metric label="Memory" value={pct(metrics["memory"])} />
+                  <Metric label="Network" value={pct(metrics["network"])} />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -291,7 +303,7 @@ function ChatPage() {
             <select
               value={deviceId ?? ""}
               onChange={(e) => setSelected(e.target.value)}
-              className="mt-2.5 w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm"
+              className="hud-frame hud-clip mt-2.5 w-full px-3 py-2.5 text-sm"
               aria-label="Seleziona dispositivo"
             >
               {devices.map((d) => (
@@ -302,6 +314,7 @@ function ChatPage() {
             </select>
           )}
         </header>
+
 
         {/* Message feed */}
         <div ref={feedRef} className="min-h-0 flex-1 overflow-y-auto px-1 py-3">
