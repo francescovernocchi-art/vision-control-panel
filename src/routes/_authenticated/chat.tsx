@@ -260,8 +260,9 @@ function ChatPage() {
       <div className="flex h-[calc(100dvh-7.5rem)] flex-col lg:h-[calc(100dvh-5.5rem)]">
         {/* Presence header — HUD control room */}
         <header className="shrink-0 px-1 pt-1 pb-3">
-          <div className="grid grid-cols-[minmax(0,42%)_minmax(0,1fr)] items-stretch gap-2.5">
-            <div className="hud-frame hud-clip relative overflow-hidden p-1.5">
+          <div className="grid grid-cols-[minmax(0,42%)_minmax(0,1fr)] items-stretch gap-2.5 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)]">
+            <div className="hud-frame hud-clip relative max-h-[15rem] overflow-hidden p-1.5">
+
               <SupervisorAvatar
                 state={presenceToAvatarState(supervisorPresence)}
                 size={0}
