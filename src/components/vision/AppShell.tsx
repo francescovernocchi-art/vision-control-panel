@@ -285,7 +285,7 @@ export function AppShell({
           {children}
         </main>
 
-        <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
+        <nav className="hud-frame hud-clip fixed inset-x-2 bottom-2 z-30 grid grid-cols-5 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
           {MOBILE_NAV.map((item) => {
             const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
             return (
@@ -293,18 +293,18 @@ export function AppShell({
                 key={item.to}
                 to={item.to}
                 className={cn(
-                  "flex flex-col items-center gap-0.5 py-2 text-[0.6rem]",
-                  active ? "text-accent" : "text-muted-foreground",
+                  "flex flex-col items-center gap-0.5 py-2.5 font-mono text-[0.55rem] tracking-[0.16em] uppercase",
+                  active ? "text-accent text-glow" : "text-muted-foreground",
                 )}
               >
-                <item.icon className="size-5" />
+                <item.icon className={cn("size-5", active && "drop-shadow-[0_0_6px_currentColor]")} />
                 {!hideMobileNavLabels && item.mobileLabel}
               </Link>
             );
           })}
           <button
             onClick={() => setMenuOpen(true)}
-            className="relative flex flex-col items-center gap-0.5 py-2 text-[0.6rem] text-muted-foreground"
+            className="relative flex flex-col items-center gap-0.5 py-2.5 font-mono text-[0.55rem] tracking-[0.16em] text-muted-foreground uppercase"
           >
             <ShieldCheck className="size-5" />
             {!hideMobileNavLabels && "Altro"}
@@ -313,6 +313,7 @@ export function AppShell({
             )}
           </button>
         </nav>
+
       </div>
     </div>
   );
