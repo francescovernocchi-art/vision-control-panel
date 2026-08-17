@@ -408,7 +408,7 @@ function ChatPage() {
               icon={<Power className="size-4" />}
               variant="default"
               size="default"
-              className="h-12 w-full text-sm font-semibold"
+              className="hud-clip h-14 w-full border border-accent/60 bg-accent/10 text-sm font-bold tracking-[0.18em] text-accent uppercase hover:bg-accent/20"
               description="Invia WAKE_SUPERVISOR all'Agent desktop. Il Supervisor locale verrà avviato e pubblicherà i progressi in chat."
               details={[
                 { label: "Dispositivo", value: deviceId ?? "—" },
