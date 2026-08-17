@@ -261,13 +261,15 @@ function ChatPage() {
         {/* Presence header — HUD control room */}
         <header className="shrink-0 px-1 pt-1 pb-3">
           <div className="grid grid-cols-[minmax(0,42%)_minmax(0,1fr)] items-stretch gap-2.5 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)]">
-            <div className="hud-frame hud-clip relative max-h-[15rem] overflow-hidden p-1.5">
+            <div className="hud-frame hud-clip relative self-start overflow-hidden p-1.5">
 
               <SupervisorAvatar
                 state={presenceToAvatarState(supervisorPresence)}
                 size={0}
-                className="hud-clip !size-full aspect-[3/4] rounded-none ring-0 ring-offset-0"
+                className="hud-clip aspect-[3/4] w-full rounded-none ring-0 ring-offset-0"
+                fit="contain"
               />
+
               <div className="pointer-events-none absolute inset-1.5 bg-[radial-gradient(circle_at_50%_38%,transparent_45%,oklch(0.17_0.035_254/70%)_100%)]" />
             </div>
 
