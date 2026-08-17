@@ -41,10 +41,12 @@ export function SupervisorAvatar({
   state,
   size = 132,
   className,
+  fit = "cover",
 }: {
   state: SupervisorState;
   size?: number;
   className?: string;
+  fit?: "cover" | "contain";
 }) {
   const animated = ["PROCESSING", "DOWNLOAD", "ANALYSIS", "PRINTING"].includes(state);
   const fill = size <= 0;
@@ -63,7 +65,7 @@ export function SupervisorAvatar({
         src={STATE_FRAME[state]}
         alt="Avatar VISION Supervisor"
         loading="lazy"
-        className="size-full object-cover"
+        className={cn("size-full", fit === "contain" ? "object-contain" : "object-cover")}
       />
 
       {animated && (
