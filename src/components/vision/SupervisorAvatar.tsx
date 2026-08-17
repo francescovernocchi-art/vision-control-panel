@@ -47,6 +47,7 @@ export function SupervisorAvatar({
   className?: string;
 }) {
   const animated = ["PROCESSING", "DOWNLOAD", "ANALYSIS", "PRINTING"].includes(state);
+  const fill = size <= 0;
   return (
     <div
       className={cn(
@@ -55,17 +56,16 @@ export function SupervisorAvatar({
         animated && "glow-accent",
         className,
       )}
-      style={{ width: size, height: size }}
+      style={fill ? undefined : { width: size, height: size }}
       aria-label={`VISION Supervisor — ${SUPERVISOR_LABEL[state]}`}
     >
       <img
         src={STATE_FRAME[state]}
         alt="Avatar VISION Supervisor"
-        width={size}
-        height={size}
         loading="lazy"
         className="size-full object-cover"
       />
+
       {animated && (
         <div className="pointer-events-none absolute inset-0">
           <div className="scanline h-1/3 w-full bg-gradient-to-b from-transparent via-accent/25 to-transparent" />

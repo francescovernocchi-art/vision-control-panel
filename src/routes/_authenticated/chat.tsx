@@ -87,45 +87,35 @@ function presenceToAvatarState(presence: SupervisorPresence): SupervisorState {
   return "IDLE";
 }
 
-function PresenceChip({
+function StatusBar({
   label,
   value,
-  online,
+  ok,
 }: {
   label: string;
   value: string;
-  online: boolean;
+  ok: boolean;
 }) {
-  const tone =
-    value === "ONLINE" || value === "ATTIVO"
-      ? "border-success/40 bg-success/10 text-success"
-      : value === "ELABORAZIONE"
-        ? "border-info/40 bg-info/10 text-info"
-        : value === "OFFLINE" || value === "INATTIVO"
-          ? "border-destructive/40 bg-destructive/10 text-destructive"
-          : "border-border bg-muted/40 text-muted-foreground";
   return (
-    <span
+    <div
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[0.65rem] tracking-wider uppercase",
-        tone,
+        "flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5",
+        ok
+          ? "border-success/50 bg-success/10 text-success"
+          : "border-destructive/50 bg-destructive/10 text-destructive",
       )}
     >
-      <StatusDot
-        status={
-          online || value === "ATTIVO" || value === "ELABORAZIONE"
-            ? "ONLINE"
-            : value === "OFFLINE" || value === "INATTIVO"
-              ? "OFFLINE"
-              : "UNKNOWN"
-        }
-        pulse={value === "ELABORAZIONE" || value === "ATTIVO" || online}
-        className="size-1.5"
-      />
-      {label} · {value}
-    </span>
+      <span className="flex min-w-0 items-center gap-1.5 font-mono text-[0.6rem] tracking-widest uppercase">
+        <StatusDot status={ok ? "ONLINE" : "OFFLINE"} pulse={ok} className="size-1.5 shrink-0" />
+        <span className="truncate">{label}</span>
+      </span>
+      <span className="shrink-0 font-mono text-[0.6rem] font-semibold tracking-widest uppercase">
+        {value}
+      </span>
+    </div>
   );
 }
+
 
 function ChatPage() {
   const queryClient = useQueryClient();
@@ -249,34 +239,34 @@ function ChatPage() {
     >
       <div className="flex h-[calc(100dvh-7.5rem)] flex-col lg:h-[calc(100dvh-5.5rem)]">
         {/* Presence header — one composition */}
-        <header className="shrink-0 border-b border-border/60 bg-background/40 px-1 pb-3 pt-1">
-          <div className="flex items-center gap-3">
-            <SupervisorAvatar
-              state={presenceToAvatarState(supervisorPresence)}
-              size={72}
-              className="rounded-2xl"
-            />
-            <div className="min-w-0 flex-1 space-y-2">
-              <div>
-                <p className="truncate text-base font-semibold tracking-tight">
+        <header className="shrink-0 px-1 pt-1 pb-3">
+          <div className="grid grid-cols-[minmax(0,40%)_minmax(0,1fr)] items-stretch gap-2.5">
+            <div className="relative overflow-hidden rounded-2xl border border-accent/40 bg-card/40 p-1.5">
+              <SupervisorAvatar
+                state={presenceToAvatarState(supervisorPresence)}
+                size={0}
+                className="!size-full aspect-[3/4] rounded-xl ring-0 ring-offset-0"
+              />
+            </div>
+
+            <div className="min-w-0 space-y-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold tracking-tight uppercase sm:text-base">
                   {VISION_PRODUCT_NAME} Supervisor
                 </p>
-                <p className="truncate font-mono text-[0.65rem] tracking-widest text-muted-foreground">
-                  {device?.name ?? "Nessun dispositivo"} · {deviceId ?? "—"}
+                <p className="truncate text-xs text-muted-foreground">
+                  {device?.name ?? "Nessun dispositivo"}
+                </p>
+                <p className="truncate font-mono text-[0.6rem] tracking-widest text-muted-foreground">
+                  {deviceId ?? "—"}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                <PresenceChip
-                  label="Agent"
-                  value={agentOnline ? "ONLINE" : "OFFLINE"}
-                  online={agentOnline}
-                />
-                <PresenceChip
-                  label="Supervisor"
-                  value={supervisorPresence}
-                  online={supervisorPresence === "ATTIVO" || supervisorPresence === "ELABORAZIONE"}
-                />
-              </div>
+              <StatusBar label="Agent" value={agentOnline ? "ONLINE" : "OFFLINE"} ok={agentOnline} />
+              <StatusBar
+                label="Supervisor"
+                value={supervisorPresence}
+                ok={supervisorPresence === "ATTIVO" || supervisorPresence === "ELABORAZIONE"}
+              />
             </div>
           </div>
 
@@ -284,7 +274,7 @@ function ChatPage() {
             <select
               value={deviceId ?? ""}
               onChange={(e) => setSelected(e.target.value)}
-              className="mt-3 w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm"
+              className="mt-2.5 w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm"
               aria-label="Seleziona dispositivo"
             >
               {devices.map((d) => (
@@ -316,27 +306,44 @@ function ChatPage() {
                 const mine = m.direction === "OUT";
                 const isAlert = ["ERROR", "WARN", "WARNING", "CRITICAL"].includes(m.level);
                 return (
-                  <li key={String(m.id)} className={cn("flex", mine ? "justify-end" : "justify-start")}>
-                    <div className={cn("max-w-[92%] space-y-1", mine && "text-right")}>
-                      <p className="font-mono text-[0.6rem] tracking-widest text-muted-foreground">
-                        {mine ? "TU" : "VISION"} · {formatRelative(m.created_at)}
-                        {!mine && m.level !== "INFO" ? ` · ${m.level}` : ""}
-                      </p>
-                      <div
+                  <li
+                    key={String(m.id)}
+                    className="grid grid-cols-[2.75rem_minmax(0,1fr)] items-start gap-2"
+                  >
+                    <div className="flex flex-col items-center pt-1">
+                      <span
                         className={cn(
-                          "rounded-2xl px-3.5 py-2.5 text-[0.95rem] leading-snug whitespace-pre-wrap break-words",
+                          "grid size-7 shrink-0 place-items-center rounded-full border",
                           mine
-                            ? "rounded-br-md bg-primary text-primary-foreground"
+                            ? "border-primary/60 bg-primary/15 text-primary"
                             : isAlert
-                              ? "rounded-bl-md border border-destructive/40 bg-destructive/10 text-foreground"
-                              : "rounded-bl-md border border-border/80 bg-card/70 text-foreground",
+                              ? "border-destructive/60 bg-destructive/15 text-destructive"
+                              : "border-accent/60 bg-accent/10 text-accent",
                         )}
                       >
-                        {m.title && m.title !== m.message && (
-                          <p className="mb-1 text-sm font-semibold">{m.title}</p>
-                        )}
-                        {m.message}
-                      </div>
+                        <span className="size-2 rounded-full bg-current" />
+                      </span>
+                      <span className="mt-1 font-mono text-[0.5rem] tracking-widest text-muted-foreground uppercase">
+                        {mine ? "TU" : "VISION"}
+                      </span>
+                      <span className="text-[0.55rem] text-muted-foreground">
+                        {formatRelative(m.created_at)}
+                      </span>
+                    </div>
+                    <div
+                      className={cn(
+                        "rounded-2xl border px-3.5 py-2.5 text-[0.95rem] leading-snug break-words whitespace-pre-wrap",
+                        mine
+                          ? "border-primary/50 bg-primary/15 text-foreground"
+                          : isAlert
+                            ? "border-destructive/50 bg-destructive/10 text-foreground"
+                            : "border-accent/35 bg-card/60 text-foreground",
+                      )}
+                    >
+                      {m.title && m.title !== m.message && (
+                        <p className="mb-1 text-sm font-semibold">{m.title}</p>
+                      )}
+                      {m.message}
                     </div>
                   </li>
                 );
@@ -345,6 +352,7 @@ function ChatPage() {
             </ul>
           )}
         </div>
+
 
         {/* Sticky actions + composer — thumb zone */}
         <footer className="shrink-0 space-y-2 border-t border-border/60 bg-background/95 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur">
