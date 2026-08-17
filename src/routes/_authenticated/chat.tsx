@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Power, PowerOff, SendHorizonal } from "lucide-react";
+import { Loader2, Power, PowerOff, SendHorizonal, SlashSquare } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/vision/AppShell";
+import { ChatCommandPalette } from "@/components/vision/ChatCommandPalette";
 import { CommandButton } from "@/components/vision/CommandButton";
 import { StatusDot } from "@/components/vision/StatusBadge";
 import { SupervisorAvatar } from "@/components/vision/SupervisorAvatar";
@@ -24,6 +25,10 @@ import {
   useDevices,
   type AgentMessageRow,
 } from "@/lib/vision-data";
+import {
+  isHelpCommand,
+  type ChatCommand,
+} from "@/lib/vision-chat-commands";
 import { enqueueSupervisorCommand } from "@/lib/vision-remote-status";
 import { VISION_PRODUCT_NAME } from "@/lib/vision-status";
 
