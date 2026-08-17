@@ -341,22 +341,23 @@ function ChatPage() {
                 return (
                   <li
                     key={String(m.id)}
-                    className="grid grid-cols-[2.75rem_minmax(0,1fr)] items-start gap-2"
+                    className="relative grid grid-cols-[3.25rem_minmax(0,1fr)] items-start gap-2"
                   >
-                    <div className="flex flex-col items-center pt-1">
+                    <div className="relative flex flex-col items-center pt-1">
                       <span
                         className={cn(
-                          "grid size-7 shrink-0 place-items-center rounded-full border",
+                          "grid size-8 shrink-0 place-items-center rounded-full border-2",
                           mine
-                            ? "border-primary/60 bg-primary/15 text-primary"
+                            ? "border-primary/70 bg-primary/15 text-primary"
                             : isAlert
-                              ? "border-destructive/60 bg-destructive/15 text-destructive"
-                              : "border-accent/60 bg-accent/10 text-accent",
+                              ? "border-destructive/70 bg-destructive/15 text-destructive"
+                              : "border-accent/70 bg-accent/10 text-accent glow-accent",
                         )}
                       >
-                        <span className="size-2 rounded-full bg-current" />
+                        <span className="size-2.5 rounded-full bg-current" />
                       </span>
-                      <span className="mt-1 font-mono text-[0.5rem] tracking-widest text-muted-foreground uppercase">
+                      <span className="absolute top-10 bottom-[-0.75rem] w-px bg-accent/25" />
+                      <span className="mt-1.5 font-mono text-[0.52rem] tracking-[0.18em] text-accent/80 uppercase">
                         {mine ? "TU" : "VISION"}
                       </span>
                       <span className="text-[0.55rem] text-muted-foreground">
@@ -365,20 +366,21 @@ function ChatPage() {
                     </div>
                     <div
                       className={cn(
-                        "rounded-2xl border px-3.5 py-2.5 text-[0.95rem] leading-snug break-words whitespace-pre-wrap",
+                        "hud-clip px-4 py-3 text-[0.95rem] leading-snug break-words whitespace-pre-wrap",
                         mine
-                          ? "border-primary/50 bg-primary/15 text-foreground"
+                          ? "border border-primary/55 bg-primary/12 text-foreground"
                           : isAlert
-                            ? "border-destructive/50 bg-destructive/10 text-foreground"
-                            : "border-accent/35 bg-card/60 text-foreground",
+                            ? "hud-frame-danger text-foreground"
+                            : "hud-frame text-foreground",
                       )}
                     >
                       {m.title && m.title !== m.message && (
-                        <p className="mb-1 text-sm font-semibold">{m.title}</p>
+                        <p className="mb-1 text-sm font-semibold text-accent">{m.title}</p>
                       )}
                       {m.message}
                     </div>
                   </li>
+
                 );
               })}
               <div ref={endRef} />
