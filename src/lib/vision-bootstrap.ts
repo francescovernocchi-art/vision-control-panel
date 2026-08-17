@@ -16,16 +16,18 @@ export function useBootstrap(): BootstrapState {
   const query = useQuery({
     queryKey: ["app_bootstrap"],
     queryFn: async () => {
-      const [{ data: cfg, error }, { data: admins, error: e2 }] = await Promise.all([
+      const [{ data: cfg, error }, { data: adminFlag, error: e2 }] = await Promise.all([
         (supabase.from("app_bootstrap" as any).select("*").limit(1).maybeSingle() as any),
-        supabase.from("user_roles").select("user_id").eq("role", "ADMIN").limit(1),
+        // RLS hides other users' roles, so ask the database directly.
+        supabase.rpc("admin_exists"),
       ]);
       if (error) throw error;
       if (e2) throw e2;
       return {
         adminEmail: (cfg?.admin_email as string | null) ?? null,
-        adminExists: (admins ?? []).length > 0,
+        adminExists: adminFlag === true,
       };
+
     },
   });
 
