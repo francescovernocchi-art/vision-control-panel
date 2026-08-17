@@ -859,6 +859,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_vision_user: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
       app_role: "ADMIN" | "OPERATORE" | "DIREZIONE"
