@@ -448,7 +448,7 @@ function ChatPage() {
               type="button"
               variant="outline"
               size="icon"
-              className="size-12 shrink-0 rounded-xl"
+              className="hud-frame hud-clip size-12 shrink-0 rounded-none text-accent hover:bg-accent/15"
               onClick={() => {
                 setPaletteOpen((v) => !v);
                 inputRef.current?.focus();
