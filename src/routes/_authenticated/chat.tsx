@@ -87,45 +87,35 @@ function presenceToAvatarState(presence: SupervisorPresence): SupervisorState {
   return "IDLE";
 }
 
-function PresenceChip({
+function StatusBar({
   label,
   value,
-  online,
+  ok,
 }: {
   label: string;
   value: string;
-  online: boolean;
+  ok: boolean;
 }) {
-  const tone =
-    value === "ONLINE" || value === "ATTIVO"
-      ? "border-success/40 bg-success/10 text-success"
-      : value === "ELABORAZIONE"
-        ? "border-info/40 bg-info/10 text-info"
-        : value === "OFFLINE" || value === "INATTIVO"
-          ? "border-destructive/40 bg-destructive/10 text-destructive"
-          : "border-border bg-muted/40 text-muted-foreground";
   return (
-    <span
+    <div
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[0.65rem] tracking-wider uppercase",
-        tone,
+        "flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5",
+        ok
+          ? "border-success/50 bg-success/10 text-success"
+          : "border-destructive/50 bg-destructive/10 text-destructive",
       )}
     >
-      <StatusDot
-        status={
-          online || value === "ATTIVO" || value === "ELABORAZIONE"
-            ? "ONLINE"
-            : value === "OFFLINE" || value === "INATTIVO"
-              ? "OFFLINE"
-              : "UNKNOWN"
-        }
-        pulse={value === "ELABORAZIONE" || value === "ATTIVO" || online}
-        className="size-1.5"
-      />
-      {label} · {value}
-    </span>
+      <span className="flex min-w-0 items-center gap-1.5 font-mono text-[0.6rem] tracking-widest uppercase">
+        <StatusDot status={ok ? "ONLINE" : "OFFLINE"} pulse={ok} className="size-1.5 shrink-0" />
+        <span className="truncate">{label}</span>
+      </span>
+      <span className="shrink-0 font-mono text-[0.6rem] font-semibold tracking-widest uppercase">
+        {value}
+      </span>
+    </div>
   );
 }
+
 
 function ChatPage() {
   const queryClient = useQueryClient();
