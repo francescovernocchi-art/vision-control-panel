@@ -46,7 +46,7 @@ const NAV = [
   { to: "/profilo", label: "Profilo", icon: User, mobileLabel: "Io" },
 ] as const;
 
-const MOBILE_NAV = [NAV[0], NAV[1], NAV[2], NAV[3]];
+
 
 export function AppShell({
   title,
