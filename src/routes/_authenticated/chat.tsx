@@ -475,11 +475,11 @@ function ChatPage() {
               }
 
               disabled={!canOperate || !deviceId || sending}
-              className="min-h-[48px] max-h-28 flex-1 resize-none rounded-xl text-base"
+              className="hud-frame hud-clip max-h-28 min-h-[48px] flex-1 resize-none rounded-none border-accent/45 text-base placeholder:text-muted-foreground/70"
             />
             <Button
               size="icon"
-              className="size-12 shrink-0 rounded-xl"
+              className="hud-clip size-12 shrink-0 rounded-none border border-accent/60 bg-accent/15 text-accent hover:bg-accent/25"
               onClick={() => void send()}
               disabled={!canOperate || !deviceId || sending || !draft.trim()}
               aria-label="Invia messaggio"
