@@ -348,7 +348,20 @@ function ChatPage() {
 
         {/* Sticky actions + composer — thumb zone */}
         <footer className="shrink-0 space-y-2 border-t border-border/60 bg-background/95 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur">
+          {showPalette && (
+            <ChatCommandPalette
+              query={slashQuery}
+              canOperate={canOperate && !!deviceId && !commandBusy}
+              onPick={pickCommand}
+              onClose={() => {
+                setPaletteOpen(false);
+                if (slashQuery) setDraft("");
+              }}
+            />
+          )}
+
           <div className="grid grid-cols-2 gap-2">
+
             <CommandButton
               label="Sveglia"
               icon={<Power className="size-4" />}
