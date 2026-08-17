@@ -197,7 +197,9 @@ export function AppShell({
               <h1
                 className={cn(
                   "truncate font-semibold tracking-tight",
-                  immersive ? "text-sm sm:text-base" : "text-base sm:text-lg",
+                  immersive
+                    ? "font-mono text-xl font-bold tracking-[0.2em] text-glow uppercase sm:text-2xl"
+                    : "text-base sm:text-lg",
                 )}
               >
                 {title}
@@ -206,13 +208,31 @@ export function AppShell({
                 <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
               )}
               {subtitle && immersive && (
-                <p className="truncate font-mono text-[0.6rem] tracking-widest text-accent">
+                <p className="truncate font-mono text-[0.6rem] tracking-[0.22em] text-accent uppercase">
                   {subtitle}
                 </p>
               )}
             </div>
             <div className="flex items-center gap-2">
               {actions}
+              {immersive && (
+                <div className="hud-frame hud-clip flex items-center gap-2 px-3 py-1.5 sm:hidden">
+                  <span className="min-w-0">
+                    <span className="block font-mono text-[0.5rem] tracking-[0.2em] text-muted-foreground uppercase">
+                      Sistema
+                    </span>
+                    <span
+                      className={cn(
+                        "block font-mono text-[0.65rem] font-bold tracking-[0.16em] uppercase",
+                        online ? "text-accent" : "text-destructive",
+                      )}
+                    >
+                      {online ? "ONLINE" : "OFFLINE"}
+                    </span>
+                  </span>
+                  <StatusDot status={online ? "ONLINE" : "OFFLINE"} pulse={online} />
+                </div>
+              )}
               <div className="hidden items-center gap-3 rounded-lg border border-border px-3 py-1.5 sm:flex">
                 <span className="flex items-center gap-1.5 font-mono text-[0.6rem] tracking-widest">
                   <StatusDot status={online ? "ONLINE" : "OFFLINE"} /> CLOUD
@@ -233,6 +253,7 @@ export function AppShell({
               </div>
 
             </div>
+
           </div>
           {!bootstrap.loading && !bootstrap.configured && pathname !== "/setup" && (
             <Link
