@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Power, PowerOff, SendHorizonal } from "lucide-react";
+import { Loader2, Power, PowerOff, SendHorizonal, SlashSquare } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/vision/AppShell";
+import { ChatCommandPalette } from "@/components/vision/ChatCommandPalette";
 import { CommandButton } from "@/components/vision/CommandButton";
 import { StatusDot } from "@/components/vision/StatusBadge";
 import { SupervisorAvatar } from "@/components/vision/SupervisorAvatar";
@@ -24,6 +25,10 @@ import {
   useDevices,
   type AgentMessageRow,
 } from "@/lib/vision-data";
+import {
+  isHelpCommand,
+  type ChatCommand,
+} from "@/lib/vision-chat-commands";
 import { enqueueSupervisorCommand } from "@/lib/vision-remote-status";
 import { VISION_PRODUCT_NAME } from "@/lib/vision-status";
 
@@ -147,9 +152,13 @@ function ChatPage() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [commandBusy, setCommandBusy] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const feedRef = useRef<HTMLDivElement>(null);
+
+  const slashQuery = draft.trimStart().startsWith("/") ? draft.trim() : "";
+  const showPalette = paletteOpen || slashQuery.length > 0;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
@@ -158,6 +167,12 @@ function ChatPage() {
   async function send() {
     const body = draft.trim();
     if (!body || !deviceId) return;
+    if (isHelpCommand(body)) {
+      setDraft("");
+      setPaletteOpen(true);
+      inputRef.current?.focus();
+      return;
+    }
     setSending(true);
     try {
       const { data: userData } = await supabase.auth.getUser();
@@ -182,7 +197,28 @@ function ChatPage() {
     }
   }
 
-  async function runCommand(type: "WAKE_SUPERVISOR" | "DEACTIVATE_SUPERVISOR") {
+  /** Selezione dal pannello /comandi. */
+  function pickCommand(command: ChatCommand) {
+    if (command.kind === "phrase") {
+      setDraft(command.template ?? "");
+      setPaletteOpen(false);
+      inputRef.current?.focus();
+      return;
+    }
+    if (command.commandType === "DEACTIVATE_SUPERVISOR") {
+      setDraft("");
+      setPaletteOpen(false);
+      toast.info("Usa il pulsante Disattiva: richiede conferma esplicita.");
+      return;
+    }
+    setDraft("");
+    setPaletteOpen(false);
+    if (command.commandType) void runCommand(command.commandType);
+  }
+
+  async function runCommand(
+    type: "WAKE_SUPERVISOR" | "DEACTIVATE_SUPERVISOR" | "GET_STATUS",
+  ) {
     if (!deviceId || commandBusy) return;
     setCommandBusy(true);
     try {
@@ -191,7 +227,9 @@ function ChatPage() {
       toast.success(
         type === "WAKE_SUPERVISOR"
           ? "Sveglia inviata — attendi i messaggi del Supervisor"
-          : "Disattiva inviata — attendi conferma Agent",
+          : type === "GET_STATUS"
+            ? "Richiesta stato inviata all'Agent"
+            : "Disattiva inviata — attendi conferma Agent",
       );
       void queryClient.invalidateQueries({ queryKey: ["commands"] });
       void queryClient.invalidateQueries({ queryKey: ["agent_messages"] });
@@ -201,6 +239,7 @@ function ChatPage() {
       setCommandBusy(false);
     }
   }
+
 
   return (
     <AppShell
@@ -309,7 +348,20 @@ function ChatPage() {
 
         {/* Sticky actions + composer — thumb zone */}
         <footer className="shrink-0 space-y-2 border-t border-border/60 bg-background/95 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur">
+          {showPalette && (
+            <ChatCommandPalette
+              query={slashQuery}
+              canOperate={canOperate && !!deviceId && !commandBusy}
+              onPick={pickCommand}
+              onClose={() => {
+                setPaletteOpen(false);
+                if (slashQuery) setDraft("");
+              }}
+            />
+          )}
+
           <div className="grid grid-cols-2 gap-2">
+
             <CommandButton
               label="Sveglia"
               icon={<Power className="size-4" />}
@@ -351,11 +403,26 @@ function ChatPage() {
           </div>
 
           <div className="flex items-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="size-12 shrink-0 rounded-xl"
+              onClick={() => {
+                setPaletteOpen((v) => !v);
+                inputRef.current?.focus();
+              }}
+              aria-label="Lista comandi"
+              aria-expanded={showPalette}
+            >
+              <SlashSquare className="size-5" />
+            </Button>
             <Textarea
               ref={inputRef}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
+                if (e.key === "Escape") setPaletteOpen(false);
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   void send();
@@ -363,8 +430,9 @@ function ChatPage() {
               }}
               rows={1}
               placeholder={
-                canOperate ? "Messaggio all'Agent (opzionale)…" : "Solo lettura"
+                canOperate ? "Messaggio o /comandi…" : "Solo lettura"
               }
+
               disabled={!canOperate || !deviceId || sending}
               className="min-h-[48px] max-h-28 flex-1 resize-none rounded-xl text-base"
             />
