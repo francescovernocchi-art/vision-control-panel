@@ -145,6 +145,9 @@ function ChatPage() {
   const agentOnline = device
     ? isDeviceOnline(device.last_seen_at, device.heartbeat_threshold_seconds ?? 120)
     : false;
+  const metrics = (device?.metadata ?? {}) as Record<string, unknown>;
+
+
 
   const { data: rawMessages = [], isLoading } = useAgentMessages(deviceId, 120);
   const messages = useMemo(
