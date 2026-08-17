@@ -99,22 +99,39 @@ function StatusBar({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5",
-        ok
-          ? "border-success/50 bg-success/10 text-success"
-          : "border-destructive/50 bg-destructive/10 text-destructive",
+        "hud-clip flex items-center justify-between gap-2 px-3 py-2",
+        ok ? "hud-frame text-success" : "hud-frame-danger text-destructive",
       )}
     >
-      <span className="flex min-w-0 items-center gap-1.5 font-mono text-[0.6rem] tracking-widest uppercase">
-        <StatusDot status={ok ? "ONLINE" : "OFFLINE"} pulse={ok} className="size-1.5 shrink-0" />
+      <span className="flex min-w-0 items-center gap-2 font-mono text-[0.65rem] tracking-[0.18em] uppercase">
+        <StatusDot status={ok ? "ONLINE" : "OFFLINE"} pulse={ok} className="size-2 shrink-0" />
         <span className="truncate">{label}</span>
       </span>
-      <span className="shrink-0 font-mono text-[0.6rem] font-semibold tracking-widest uppercase">
+      <span className="shrink-0 font-mono text-[0.65rem] font-bold tracking-[0.18em] uppercase">
         {value}
       </span>
     </div>
   );
 }
+
+/** Metrica del pannello STATO SISTEMA (solo presentazione). */
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 px-2 first:pl-0 last:pr-0">
+      <p className="truncate font-mono text-[0.55rem] tracking-[0.18em] text-muted-foreground uppercase">
+        {label}
+      </p>
+      <p className="truncate font-mono text-lg font-bold text-accent text-glow">{value}</p>
+      <div className="mt-1 h-3 w-full bg-gradient-to-t from-accent/25 to-transparent" />
+    </div>
+  );
+}
+
+function pct(raw: unknown): string {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(n) ? `${Math.round(n)}%` : "—";
+}
+
 
 
 function ChatPage() {
